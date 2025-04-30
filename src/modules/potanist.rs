@@ -1,5 +1,6 @@
 use std::ops::RangeInclusive;
 
+use crate::constants::pokemon_nature::POKEMON_NATURES;
 use crate::modules::lcrng::LCRng;
 use crate::types::ivs::IVs;
 
@@ -27,7 +28,7 @@ impl Potanist {
         ];
     }
 
-    pub fn make_seed_from_rands(&self, rand_1: u16, rand_2: u16) -> u32 {
+    pub fn rands_to_seed(&self, rand_1: u16, rand_2: u16) -> u32 {
         return (rand_1 as u32) << 16 | (rand_2 as u32);
     }
 
@@ -37,19 +38,22 @@ impl Potanist {
         let pid_rand_2 = self.lcrng.extract_rand(pid_seed_2);
         let pid_rand_1 = self.lcrng.extract_rand(pid_seed_1);
         let pid = (pid_rand_2 as u32) << 16 | (pid_rand_1 as u32);
-        let nature_num = pid % 100 % 25;
+
+        let nature_num = (pid % 100 % 25) as u8;
         let gender_num = pid & 0xff;
         let ability_num = pid & 1;
+
+        let (nature_en, nature_ja) = POKEMON_NATURES.get(&nature_num).unwrap();
 
         println!("pid_seed_1 : {:#010x}", pid_seed_1);
         println!("pid_seed_2 : {:#010x}", pid_seed_2);
         println!("ivs_seed_1 : {:#010x}", ivs_seed_1);
         println!("ivs_seed_2 : {:#010x}", ivs_seed_2);
         println!("pid        : {:#010x}", pid);
-        println!("nature     : {}", nature_num);
+        println!("nature     : {}({})", nature_ja, nature_en);
         println!("gender     : {}", gender_num);
         println!("ability    : {}", ability_num);
-        println!("------------------")
+        println!("------------------");
     }
 
     pub fn find_seed_from_ivs(&self, ivs: IVs) {
@@ -60,46 +64,79 @@ impl Potanist {
                 .sum::<u32>()
         };
 
-        let group_1 = [&ivs.hp, &ivs.attack, &ivs.defense];
-        let group_2 = [&ivs.speed, &ivs.sp_attack, &ivs.sp_defense];
+        let ivs_1 = [&ivs.hp, &ivs.attack, &ivs.defense];
+        let ivs_2 = [&ivs.speed, &ivs.sp_attack, &ivs.sp_defense];
 
-        let (outer_group, inner_group, forward) =
-            if calc_time_comp(group_1) < calc_time_comp(group_2) {
-                (group_1, group_2, true)
+        let (faster_ivs_group, slower_ivs_group, forward) =
+            if calc_time_comp(ivs_1) < calc_time_comp(ivs_2) {
+                (ivs_1, ivs_2, true)
             } else {
-                (group_2, group_1, false)
+                (ivs_2, ivs_1, false)
             };
 
-        for ivs_1 in outer_group[0].clone() {
-            for ivs_2 in outer_group[1].clone() {
-                for ivs_3 in outer_group[2].clone() {
-                    let ivs_rand_1_0 = self.ivs_to_rand([ivs_1, ivs_2, ivs_3]);
+        for iv_1 in faster_ivs_group[0].clone() {
+            for iv_2 in faster_ivs_group[1].clone() {
+                for iv_3 in faster_ivs_group[2].clone() {
+                    let ivs_rand_1_0 = self.ivs_to_rand([iv_1, iv_2, iv_3]);
                     let ivs_rand_1_1 = (1 << 15) | ivs_rand_1_0;
 
                     for ivs_rand_2 in 0..=0xffff {
                         for &ivs_rand_1 in &[ivs_rand_1_0, ivs_rand_1_1] {
-                            let (ivs_seed_1, ivs_seed_2, ivs) = if forward {
-                                let _ivs_seed_1 = self.make_seed_from_rands(ivs_rand_1, ivs_rand_2);
-                                let _ivs_seed_2 = self.lcrng.next(_ivs_seed_1);
-                                let _ivs = self.rand_to_ivs(self.lcrng.extract_rand(_ivs_seed_2));
-                                (_ivs_seed_1, _ivs_seed_2, _ivs)
+                            let (ivs_1st_seed, ivs_2nd_seed, generated_ivs) = if forward {
+                                let ivs_1st_seed = self.rands_to_seed(ivs_rand_1, ivs_rand_2);
+                                let ivs_2nd_seed = self.lcrng.next(ivs_1st_seed);
+                                let ivs = self.rand_to_ivs(self.lcrng.extract_rand(ivs_2nd_seed));
+                                (ivs_1st_seed, ivs_2nd_seed, ivs)
                             } else {
-                                let _ivs_seed_2 = self.make_seed_from_rands(ivs_rand_1, ivs_rand_2);
-                                let _ivs_seed_1 = self.lcrng.prev(_ivs_seed_2);
-                                let _ivs = self.rand_to_ivs(self.lcrng.extract_rand(_ivs_seed_1));
-                                (_ivs_seed_1, _ivs_seed_2, _ivs)
+                                let ivs_2nd_seed = self.rands_to_seed(ivs_rand_1, ivs_rand_2);
+                                let ivs_1st_seed = self.lcrng.prev(ivs_2nd_seed);
+                                let ivs = self.rand_to_ivs(self.lcrng.extract_rand(ivs_1st_seed));
+                                (ivs_1st_seed, ivs_2nd_seed, ivs)
                             };
 
-                            if inner_group
+                            if slower_ivs_group
                                 .iter()
-                                .zip(ivs.iter())
+                                .zip(generated_ivs.iter())
                                 .all(|(range, value)| range.contains(value))
                             {
-                                self.extract_pokemon_data_from_ivs_seeds(ivs_seed_1, ivs_seed_2);
+                                self.extract_pokemon_data_from_ivs_seeds(
+                                    ivs_1st_seed,
+                                    ivs_2nd_seed,
+                                );
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    pub fn find_seed_from_pid(&self, pid: u32) {
+        let pid_1st_rand_1 = (pid & 0xffff) as u16;
+        let pid_2nd_rand_1 = (pid >> 16) as u16;
+
+        for pid_1st_rand_2 in 0..=0xffff {
+            let pid_1st_seed = self.rands_to_seed(pid_1st_rand_1, pid_1st_rand_2);
+            let pid_2nd_seed = self.lcrng.next(pid_1st_seed);
+
+            if pid_2nd_rand_1 == self.lcrng.extract_rand(pid_2nd_seed) {
+                let ivs_1st_seed = self.lcrng.next(pid_2nd_seed);
+                let ivs_1st_rand = self.lcrng.extract_rand(ivs_1st_seed);
+
+                let ivs_2nd_seed = self.lcrng.next(ivs_1st_seed);
+                let ivs_2nd_rand = self.lcrng.extract_rand(ivs_2nd_seed);
+
+                let ivs_1st = self.rand_to_ivs(ivs_1st_rand);
+                let ivs_2nd = self.rand_to_ivs(ivs_2nd_rand);
+
+                println!("pid_1st_seed    : {:#010x}", pid_1st_seed);
+                println!("HP              : {}", ivs_1st[0]);
+                println!("Attack          : {}", ivs_1st[1]);
+                println!("Defense         : {}", ivs_1st[2]);
+                println!("Speed           : {}", ivs_2nd[0]);
+                println!("Special Attack  : {}", ivs_2nd[1]);
+                println!("Special Defense : {}", ivs_2nd[2]);
+                println!("------------------")
             }
         }
     }
