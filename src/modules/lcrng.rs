@@ -23,7 +23,7 @@ impl LCRng {
         return (prev_seed & 0xffffffff) as u32;
     }
 
-    pub fn pick_rand_from_seed(&self, seed: u32) -> u16 {
+    pub fn extract_rand(&self, seed: u32) -> u16 {
         return (seed >> 16) as u16;
     }
 }
