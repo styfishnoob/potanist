@@ -12,4 +12,18 @@ impl LCRng {
             inverse_multiplier: 0xeeb9eb65,
         }
     }
+
+    pub fn next(&self, seed: u32) -> u32 {
+        let next_seed = (seed as u64) * (self.multiplier as u64) + (self.increment as u64);
+        return (next_seed & 0xffffffff) as u32;
+    }
+
+    pub fn prev(&self, seed: u32) -> u32 {
+        let prev_seed = (self.inverse_multiplier as u64) * (seed as u64 - self.increment as u64);
+        return (prev_seed & 0xffffffff) as u32;
+    }
+
+    pub fn pick_rand_from_seed(&self, seed: u32) -> u16 {
+        return (seed >> 16) as u16;
+    }
 }
