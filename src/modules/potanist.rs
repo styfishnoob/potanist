@@ -1,3 +1,4 @@
+use itertools::iproduct;
 use std::ops::RangeInclusive;
 
 use crate::constants::pokemon_nature::POKEMON_NATURES;
@@ -74,38 +75,33 @@ impl Potanist {
                 (ivs_2, ivs_1, false)
             };
 
-        for iv_1 in faster_ivs_group[0].clone() {
-            for iv_2 in faster_ivs_group[1].clone() {
-                for iv_3 in faster_ivs_group[2].clone() {
-                    let ivs_rand_1_0 = self.ivs_to_rand([iv_1, iv_2, iv_3]);
-                    let ivs_rand_1_1 = (1 << 15) | ivs_rand_1_0;
+        for (iv_1, iv_2, iv_3) in iproduct!(
+            faster_ivs_group[0].clone(),
+            faster_ivs_group[1].clone(),
+            faster_ivs_group[2].clone()
+        ) {
+            let ivs_rand_1_0 = self.ivs_to_rand([iv_1, iv_2, iv_3]);
+            let ivs_rand_1_1 = (1 << 15) | ivs_rand_1_0;
 
-                    for ivs_rand_2 in 0..=0xffff {
-                        for &ivs_rand_1 in &[ivs_rand_1_0, ivs_rand_1_1] {
-                            let (ivs_1st_seed, ivs_2nd_seed, generated_ivs) = if forward {
-                                let ivs_1st_seed = self.rands_to_seed(ivs_rand_1, ivs_rand_2);
-                                let ivs_2nd_seed = self.lcrng.next(ivs_1st_seed);
-                                let ivs = self.rand_to_ivs(self.lcrng.extract_rand(ivs_2nd_seed));
-                                (ivs_1st_seed, ivs_2nd_seed, ivs)
-                            } else {
-                                let ivs_2nd_seed = self.rands_to_seed(ivs_rand_1, ivs_rand_2);
-                                let ivs_1st_seed = self.lcrng.prev(ivs_2nd_seed);
-                                let ivs = self.rand_to_ivs(self.lcrng.extract_rand(ivs_1st_seed));
-                                (ivs_1st_seed, ivs_2nd_seed, ivs)
-                            };
+            for (ivs_rand_1, ivs_rand_2) in iproduct!([ivs_rand_1_0, ivs_rand_1_1], 0..=0xffff) {
+                let (ivs_1st_seed, ivs_2nd_seed, generated_ivs) = if forward {
+                    let ivs_1st_seed = self.rands_to_seed(ivs_rand_1, ivs_rand_2);
+                    let ivs_2nd_seed = self.lcrng.next(ivs_1st_seed);
+                    let ivs = self.rand_to_ivs(self.lcrng.extract_rand(ivs_2nd_seed));
+                    (ivs_1st_seed, ivs_2nd_seed, ivs)
+                } else {
+                    let ivs_2nd_seed = self.rands_to_seed(ivs_rand_1, ivs_rand_2);
+                    let ivs_1st_seed = self.lcrng.prev(ivs_2nd_seed);
+                    let ivs = self.rand_to_ivs(self.lcrng.extract_rand(ivs_1st_seed));
+                    (ivs_1st_seed, ivs_2nd_seed, ivs)
+                };
 
-                            if slower_ivs_group
-                                .iter()
-                                .zip(generated_ivs.iter())
-                                .all(|(range, value)| range.contains(value))
-                            {
-                                self.extract_pokemon_data_from_ivs_seeds(
-                                    ivs_1st_seed,
-                                    ivs_2nd_seed,
-                                );
-                            }
-                        }
-                    }
+                if slower_ivs_group
+                    .iter()
+                    .zip(generated_ivs.iter())
+                    .all(|(range, value)| range.contains(value))
+                {
+                    self.extract_pokemon_data_from_ivs_seeds(ivs_1st_seed, ivs_2nd_seed);
                 }
             }
         }
@@ -120,24 +116,34 @@ impl Potanist {
             let pid_2nd_seed = self.lcrng.next(pid_1st_seed);
 
             if pid_2nd_rand_1 == self.lcrng.extract_rand(pid_2nd_seed) {
-                let ivs_1st_seed = self.lcrng.next(pid_2nd_seed);
-                let ivs_1st_rand = self.lcrng.extract_rand(ivs_1st_seed);
-
-                let ivs_2nd_seed = self.lcrng.next(ivs_1st_seed);
-                let ivs_2nd_rand = self.lcrng.extract_rand(ivs_2nd_seed);
-
-                let ivs_1st = self.rand_to_ivs(ivs_1st_rand);
-                let ivs_2nd = self.rand_to_ivs(ivs_2nd_rand);
-
                 println!("pid_1st_seed    : {:#010x}", pid_1st_seed);
-                println!("HP              : {}", ivs_1st[0]);
-                println!("Attack          : {}", ivs_1st[1]);
-                println!("Defense         : {}", ivs_1st[2]);
-                println!("Speed           : {}", ivs_2nd[0]);
-                println!("Special Attack  : {}", ivs_2nd[1]);
-                println!("Special Defense : {}", ivs_2nd[2]);
-                println!("------------------")
             }
+        }
+    }
+
+    pub fn find_seed_from_boot_time(&self, seed: u32) {
+        let mut current_seed = self.lcrng.next(seed);
+        let mut found = false;
+        let mut moves = -1;
+
+        while found == false && moves < 500 {
+            current_seed = self.lcrng.prev(current_seed);
+            let time_sum_0 = (current_seed >> 24) & 0xff;
+            let time_sum_1 = (1 << 8) | time_sum_0;
+            let hour = (current_seed >> 16) & 0xff;
+            let frame_sum = current_seed & 0xffff;
+            moves += 1;
+
+            // hour が 24 を超えている場合、いつ起動してもシードに到達不可能
+            if hour >= 24 || frame_sum >= 1000 {
+                continue;
+            }
+
+            found = true;
+            println!("moves                   : {}", moves);
+            println!("month * day + min + sec : {} or {}", time_sum_0, time_sum_1);
+            println!("hour                    : {}", hour);
+            println!("frame + year - 2000     : {}", frame_sum);
         }
     }
 }
