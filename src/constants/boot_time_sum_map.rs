@@ -16,28 +16,16 @@ pub fn build_boot_time_sum_map() -> BootTimeSumMap {
 
         for day in 1..=max_day {
             for min in 0..=59 {
-                for sec in 15..=59 {
-                    let value = (month as u16) * (day as u16) + (min as u16) + (sec as u16);
-                    let candidates = map.entry(value).or_insert_with(Vec::new);
-
-                    // すでに同じ month/day のものがあるか確認
-                    if let Some(existing) =
-                        candidates.iter_mut().find(|e| e.0 == month && e.1 == day)
-                    {
-                        // sec が 15 に近い方を優先
-                        if (sec as i16 - 15).abs() < (existing.3 as i16 - 15).abs() {
-                            *existing = (month, day, min, sec);
-                        }
-                    } else {
-                        // 初めての (month, day) 組み合わせなら追加
-                        candidates.push((month, day, min, sec));
-                    }
+                for sec in 0..=59 {
+                    let time_sum = (month as u16) * (day as u16) + (min as u16) + (sec as u16);
+                    let candidates = map.entry(time_sum).or_insert_with(Vec::new);
+                    candidates.push((month, day, min, sec));
                 }
             }
         }
     }
 
-    map
+    return map;
 }
 
 pub fn save_json(map: &BootTimeSumMap, path: &str) {
