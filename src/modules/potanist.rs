@@ -64,7 +64,7 @@ impl Potanist {
     ) {
         let boot_time_map = boot_time_sum_map::load_bincode("./data/boot_time_sum_map.bin");
 
-        for year in 00..=99 {
+        for year in 0..=99 {
             let frame = frame_sum - year;
 
             if let Some(boot_time_vec) = boot_time_map.get(&time_sum) {
@@ -101,8 +101,8 @@ impl Potanist {
 
                 for ((month, day), (min, bsec, sec)) in sorted {
                     println!(
-                        "20{:02}年 {:02}月 {:02}日 {:02}時 {:02}分 {:02}秒 {:02}sec",
-                        year, month, day, hour, min, bsec, sec
+                        "20{:02}年 {:02}月 {:02}日 {:02}時 {:02}分 {:02}秒に選択 | 開始: {:02}秒 | 月*日+分+秒: {} | 待機時間: {}",
+                        year, month, day, hour, min, bsec, sec, month * day + min + sec, (frame + blank_frame) / 60
                     );
                 }
 
@@ -110,6 +110,36 @@ impl Potanist {
             } else {
                 println!("{} に一致する起動時間は見つかりませんでした。", time_sum)
             }
+        }
+    }
+
+    pub fn display_utsugi_response_list(&self, seed: u32, roaming_advances: u8) {
+        const SEARCH_RANGE: u32 = 10;
+        let start = seed.saturating_sub(SEARCH_RANGE);
+        let end = seed.saturating_add(SEARCH_RANGE);
+        let seed_list: Vec<u32> = (start..=end).collect();
+
+        for seed in seed_list {
+            // let mut response_list: Vec<u16> = Vec::new();
+            let mut _seed = seed;
+            print!("{:0x}: ", _seed);
+
+            for _ in 0..roaming_advances {
+                _seed = self.lcrng.next(_seed);
+            }
+
+            for _ in 0..SEARCH_RANGE {
+                _seed = self.lcrng.next(_seed);
+                let rand = self.lcrng.extract_rand(_seed);
+                let response_type = rand % 3;
+                match response_type {
+                    0 => print!("し "),
+                    1 => print!("カ "),
+                    2 => print!("菌 "),
+                    _ => {}
+                }
+            }
+            println!("徘徊消費数: {}", roaming_advances);
         }
     }
 
@@ -177,18 +207,18 @@ impl Potanist {
         }
     }
 
-    pub fn find_seed_from_boot_time(&self, seed: u32, max_moves: u16, max_frame_sum: u16) {
+    pub fn find_seed_from_boot_time(&self, seed: u32, max_advances: u16, max_frame_sum: u16) {
         let mut current_seed = self.lcrng.next(seed); // 与えられたシードが有効かもしれないので、一度nextしてチェックする
         let mut found = false;
-        let mut moves = 0;
+        let mut advances = 0;
 
-        while found == false && moves < max_moves {
+        while found == false && advances < max_advances {
             current_seed = self.lcrng.prev(current_seed);
             let time_sum_0 = ((current_seed >> 24) & 0xff) as u16;
             let time_sum_1 = ((1 << 8) | time_sum_0) as u16;
             let hour = ((current_seed >> 16) & 0xff) as u8;
             let frame_sum = (current_seed & 0xffff) as u16;
-            moves += 1;
+            advances += 1;
 
             // hour が 24 を超えている場合、いつ起動してもシードに到達不可能
             if hour >= 24 || frame_sum >= max_frame_sum {
@@ -196,7 +226,7 @@ impl Potanist {
             }
 
             println!("初期シード           : {:#010x}", current_seed);
-            println!("消費数               : {}", moves - 1); // 最初current_seedをnextしているので、最後に-1する
+            println!("消費数               : {}", advances - 1); // 最初current_seedをnextしているので、最後に-1する
             println!("月x日+分+秒          : {} or {}", time_sum_0, time_sum_1);
             println!("時                   : {}", hour);
             println!("フレーム + 年 - 2000 : {}", frame_sum);
