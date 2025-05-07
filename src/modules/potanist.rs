@@ -143,6 +143,41 @@ impl Potanist {
         }
     }
 
+    /*
+    犬 -> ラティの順で処理
+    犬: 乱数 % 16 の値がジョウト道路の昇順に対応
+    ラ: 乱数 % 25 の値がカントー道路の昇順に対応
+     */
+    pub fn display_roamers_location_list(&self, seed: u32, roamers_num: u8) {
+        const JOHTO_ROADS: [u8; 16] = [
+            29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 42, 43, 44, 45, 46,
+        ];
+        const KANTO_ROADS: [u8; 25] = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 26,
+            28,
+        ];
+
+        let mut _seed = seed;
+        for i in 0..roamers_num {
+            _seed = self.lcrng.next(_seed);
+            let rand = self.lcrng.extract_rand(_seed);
+
+            match i {
+                0 | 1 => {
+                    let road_num = (rand % 16) as u8;
+                    print!("{} ", JOHTO_ROADS[road_num as usize]);
+                }
+
+                _ => {
+                    let road_num = (rand % 25) as u8;
+                    print!("{} ", KANTO_ROADS[road_num as usize]);
+                }
+            }
+        }
+
+        println!("")
+    }
+
     pub fn find_seed_from_ivs(&self, ivs: IVs) {
         let calc_time_comp = |ivs_ranges: [&RangeInclusive<u8>; 3]| {
             ivs_ranges
