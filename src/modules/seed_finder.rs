@@ -1,18 +1,19 @@
 use itertools::iproduct;
 
-use crate::modules::lcrng::LCRng;
+use crate::modules::rng_lc::RngLC;
 use crate::modules::seed_analyzer::SeedAnalyzer;
+use crate::types::pokemon_ivs::IVRanges;
 use crate::types::types::*;
 
 pub struct SeedFinder {
-    lcrng: LCRng,
+    rng_lc: RngLC,
     seed_analyzer: SeedAnalyzer,
 }
 
 impl SeedFinder {
     pub fn new() -> Self {
         Self {
-            lcrng: LCRng::new(),
+            rng_lc: RngLC::new(),
             seed_analyzer: SeedAnalyzer::new(),
         }
     }
@@ -59,16 +60,16 @@ impl SeedFinder {
                         .seed_analyzer
                         .rands_to_seed(iv_smaller_group_rand_high, iv_smaller_group_rand_low);
 
-                    let iv_2nd_seed = self.lcrng.next(iv_1st_seed);
-                    let ivs = self.seed_analyzer.rand_to_ivs(self.lcrng.extract_rand(iv_2nd_seed));
+                    let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
+                    let ivs = self.seed_analyzer.rand_to_ivs(self.rng_lc.extract_rand(iv_2nd_seed));
                     (iv_1st_seed, ivs)
                 } else {
                     let iv_2nd_seed = self
                         .seed_analyzer
                         .rands_to_seed(iv_smaller_group_rand_high, iv_smaller_group_rand_low);
 
-                    let iv_1st_seed = self.lcrng.prev(iv_2nd_seed);
-                    let ivs = self.seed_analyzer.rand_to_ivs(self.lcrng.extract_rand(iv_1st_seed));
+                    let iv_1st_seed = self.rng_lc.prev(iv_2nd_seed);
+                    let ivs = self.seed_analyzer.rand_to_ivs(self.rng_lc.extract_rand(iv_1st_seed));
                     (iv_1st_seed, ivs)
                 };
 
@@ -92,9 +93,9 @@ impl SeedFinder {
 
         for pid_1st_rand_low in 0..=0xffff {
             let pid_1st_seed = self.seed_analyzer.rands_to_seed(pid_1st_rand_high, pid_1st_rand_low);
-            let pid_2nd_seed = self.lcrng.next(pid_1st_seed);
+            let pid_2nd_seed = self.rng_lc.next(pid_1st_seed);
 
-            if pid_2nd_rand_high == self.lcrng.extract_rand(pid_2nd_seed) {
+            if pid_2nd_rand_high == self.rng_lc.extract_rand(pid_2nd_seed) {
                 matched_pid_1st_seed_list.push(pid_1st_seed);
             }
         }
@@ -103,25 +104,26 @@ impl SeedFinder {
     }
 
     pub fn find_seed_from_boot_time(&self, seed: Seed, max_advances: u16, min_waiting_frame: u16) -> Seed {
-        let mut _seed = self.lcrng.next(seed); // 引数で与えられたシードが有効かもしれないので、一度nextしてチェックする
+        let mut _seed = self.rng_lc.next(seed); // 引数で与えられたシードが有効かもしれないので、一度nextしてチェックする
         let mut advances = 0; // 消費数
         let mut found = false;
 
         while found == false && advances < max_advances {
-            _seed = self.lcrng.prev(_seed);
+            _seed = self.rng_lc.prev(_seed);
 
             /*
               seed: 0x12345678
               12   -> time_sum      (month * day + minute + second)
               34   -> hour          (ここが24以上だと、いつ起動してもこのシードにならないのでcontinue)
               5678 -> waiting_frame (frame + (year - 2000)
-              ソフト選択からつづきからまで約14秒かかり、その内空白時間が約4秒のため、最速でも10秒はかかる。よってframeが600Fくらいはないと間に合わないことになる。
+              ソフト選択からつづきからまで約14秒かかり、その内空白時間が約4秒のため、つづきからを押すまでに最速でも10秒はかかる。
+              よってframeが600Fくらいはないと間に合わないことになる。
             */
             let hour = ((_seed >> 16) & 0xff) as u8;
-            let waiting_frame = (_seed & 0xffff) as u16;
+            let frame_sum = (_seed & 0xffff) as u16;
             advances += 1;
 
-            if 24 <= hour || min_waiting_frame < waiting_frame {
+            if 24 <= hour || min_waiting_frame < frame_sum {
                 continue;
             }
 

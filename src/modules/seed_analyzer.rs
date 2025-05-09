@@ -1,17 +1,17 @@
 use crate::constants::time_sum_map;
-use crate::modules::lcrng::LCRng;
+use crate::modules::rng_lc::RngLC;
 use crate::types::pokemon_data::PokemonData;
 use crate::types::pokemon_ivs::IVs;
 use crate::types::types::*;
 use std::collections::HashMap;
 
 pub struct SeedAnalyzer {
-    lcrng: LCRng,
+    rng_lc: RngLC,
 }
 
 impl SeedAnalyzer {
     pub fn new() -> Self {
-        Self { lcrng: LCRng::new() }
+        Self { rng_lc: RngLC::new() }
     }
 
     pub fn iv_group_to_rand(&self, iv_group: IVGroup) -> Rand {
@@ -27,19 +27,23 @@ impl SeedAnalyzer {
         ];
     }
 
+    pub fn seed_to_rand(&self, seed: Seed) -> Rand {
+        return (seed >> 16) as Rand;
+    }
+
     pub fn rands_to_seed(&self, rand_high: Rand, rand_low: Rand) -> Seed {
         return (rand_high as Seed) << 16 | (rand_low as Seed);
     }
 
     pub fn extract_pokemon_data_from_iv_1st_seed(&self, iv_1st_seed: Seed) -> PokemonData {
-        let pid_2nd_seed = self.lcrng.prev(iv_1st_seed);
-        let pid_1st_seed = self.lcrng.prev(pid_2nd_seed);
-        let iv_2nd_seed = self.lcrng.next(iv_1st_seed);
+        let pid_2nd_seed = self.rng_lc.prev(iv_1st_seed);
+        let pid_1st_seed = self.rng_lc.prev(pid_2nd_seed);
+        let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
 
-        let pid_1st_rand = self.lcrng.extract_rand(pid_1st_seed);
-        let pid_2nd_rand = self.lcrng.extract_rand(pid_2nd_seed);
-        let iv_1st_rand = self.lcrng.extract_rand(iv_1st_seed);
-        let iv_2nd_rand = self.lcrng.extract_rand(iv_2nd_seed);
+        let pid_1st_rand = self.rng_lc.extract_rand(pid_1st_seed);
+        let pid_2nd_rand = self.rng_lc.extract_rand(pid_2nd_seed);
+        let iv_1st_rand = self.rng_lc.extract_rand(iv_1st_seed);
+        let iv_2nd_rand = self.rng_lc.extract_rand(iv_2nd_seed);
         let pid = (pid_2nd_rand as Pid) << 16 | (pid_1st_rand as Pid);
 
         let ivs_1st = self.rand_to_ivs(iv_1st_rand);
