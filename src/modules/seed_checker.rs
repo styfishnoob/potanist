@@ -1,15 +1,16 @@
 use crate::constants::roaming_pokemon_routes;
-use crate::modules::lcrng::LCRng;
+use crate::modules::rng_lc::RngLC;
+use crate::modules::rng_mt::RngMT;
 use crate::types::types::*;
 use std::collections::HashMap;
 
 pub struct SeedChecker {
-    lcrng: LCRng,
+    rng_lc: RngLC,
 }
 
 impl SeedChecker {
     pub fn new() -> Self {
-        Self { lcrng: LCRng::new() }
+        Self { rng_lc: RngLC::new() }
     }
 
     pub fn create_call_response_sequence_map(
@@ -18,7 +19,7 @@ impl SeedChecker {
         roaming_num: u8,
         search_range: u8,
     ) -> HashMap<Seed, Vec<u8>> {
-        let mut call_response_sequence_list: HashMap<Seed, Vec<u8>> = HashMap::new();
+        let mut call_response_sequence_map: HashMap<Seed, Vec<u8>> = HashMap::new();
         let range_start = seed.saturating_sub(search_range as u32);
         let range_end = seed.saturating_add(search_range as u32);
         let seeds_to_search: Vec<Seed> = (range_start..=range_end).collect();
@@ -27,7 +28,7 @@ impl SeedChecker {
             let mut _seed = seed;
 
             for _ in 0..roaming_num {
-                _seed = self.lcrng.next(_seed);
+                _seed = self.rng_lc.next(_seed);
             }
 
             /*
@@ -36,23 +37,23 @@ impl SeedChecker {
               この範囲を設定できるようにすることも視野
             */
             for _ in 0..10 {
-                _seed = self.lcrng.next(_seed);
-                let rand = self.lcrng.extract_rand(_seed);
+                _seed = self.rng_lc.next(_seed);
+                let rand = self.rng_lc.extract_rand(_seed);
                 let response_type = (rand % 3) as u8;
-                call_response_sequence_list
+                call_response_sequence_map
                     .entry(seed)
                     .or_insert_with(Vec::new)
                     .push(response_type);
             }
         }
 
-        return call_response_sequence_list;
+        return call_response_sequence_map;
     }
 
     /*
       HashMap<Seed, (Vec<u8>, [bool; 3])>
-      [(30,1),  [true,  false, true]] -> ライコウ: 30 ラティ: 1
-      [(1),     [false, false, true]] -> ラティ: 1
+      [(30,1),  [true,  false, true]]  -> ライコウ: 30 ラティ: 1
+      [(1),     [false, false, true]]  -> ラティ: 1
       [(30,31), [true,  true,  false]] -> ライコウ: 30 エンテイ: 31
 
       犬　-> ラティの順で処理
@@ -78,8 +79,8 @@ impl SeedChecker {
                     continue;
                 }
 
-                next_seed = self.lcrng.next(next_seed);
-                let rand = self.lcrng.extract_rand(next_seed);
+                next_seed = self.rng_lc.next(next_seed);
+                let rand = self.rng_lc.extract_rand(next_seed);
 
                 match i {
                     0 | 1 => {
@@ -108,14 +109,38 @@ impl SeedChecker {
         return roamers_location_map;
     }
 
-    pub fn create_coin_flip_result_list() {}
+    pub fn create_coin_flip_result_map(&self, seed: Seed, search_range: u8) -> HashMap<Seed, Vec<bool>> {
+        let mut coin_flip_result_map: HashMap<Seed, Vec<bool>> = HashMap::new();
+        let range_start = seed.saturating_sub(search_range as u32);
+        let range_end = seed.saturating_add(search_range as u32);
+        let seeds_to_search: Vec<Seed> = (range_start..=range_end).collect();
+
+        for seed in seeds_to_search {
+            let mut mt = RngMT::new(seed);
+
+            /*
+                電話同様、一旦10回先の結果まで表示する
+                範囲を指定できるようにもするかも
+            */
+            for _ in 0..10 {
+                let next_seed = mt.next();
+                let pid = mt.get_pid(next_seed);
+                coin_flip_result_map
+                    .entry(seed)
+                    .or_insert_with(Vec::new)
+                    .push(pid % 2 == 1);
+            }
+        }
+
+        return coin_flip_result_map;
+    }
 }
 
 fn display_roamers_location(roamers_location_map: HashMap<Seed, (Vec<u8>, [bool; 3])>) {
-    let mut sorted_roamers_location_list: Vec<_> = roamers_location_map.iter().collect();
-    sorted_roamers_location_list.sort_by_key(|&(k, _)| k);
+    let mut sorted: Vec<_> = roamers_location_map.iter().collect();
+    sorted.sort_by_key(|&(k, _)| k);
 
-    for (seed, value) in sorted_roamers_location_list {
+    for (seed, value) in sorted {
         print!("{:0x}: ", seed);
 
         let true_indicies: Vec<usize> = value
@@ -139,13 +164,13 @@ fn display_roamers_location(roamers_location_map: HashMap<Seed, (Vec<u8>, [bool;
 }
 
 fn display_call_response_sequence(call_response_sequence_map: HashMap<Seed, Vec<u8>>, person: u8) {
-    let mut sorted_call_response_sequence_map: Vec<_> = call_response_sequence_map.iter().collect();
-    sorted_call_response_sequence_map.sort_by_key(|&(k, _)| k);
+    let mut sorted: Vec<_> = call_response_sequence_map.iter().collect();
+    sorted.sort_by_key(|&(k, _)| k);
 
     const ELM_RESPONSE_TYPE: [&str; 3] = ["し", "カ", "菌"];
     const IRWIN_RESPONSE_TYPE: [&str; 3] = ["0", "1", "2"];
 
-    for (seed, vec) in sorted_call_response_sequence_map {
+    for (seed, vec) in sorted {
         print!("{:0x}: ", seed);
 
         for v in vec {
@@ -157,5 +182,28 @@ fn display_call_response_sequence(call_response_sequence_map: HashMap<Seed, Vec<
         }
 
         println!("")
+    }
+}
+
+fn display_coin_flip_results(coin_flip_result_map: HashMap<Seed, Vec<bool>>) {
+    let mut sorted: Vec<_> = coin_flip_result_map.iter().collect();
+    sorted.sort_by_key(|&(k, _)| k);
+
+    for (seed, vec) in sorted {
+        print!("{:0x}: ", seed);
+
+        for v in vec {
+            match v {
+                true => {
+                    print!("H, ");
+                }
+
+                false => {
+                    print!("T, ");
+                }
+            }
+        }
+
+        println!("");
     }
 }
