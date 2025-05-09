@@ -1,4 +1,4 @@
-pub mod boot_time_sum_map;
-pub mod pokemon_ability;
-pub mod pokemon_nature;
+pub mod pokemon_abilities;
+pub mod pokemon_natures;
 pub mod roaming_pokemon_routes;
+pub mod time_sum_map;
