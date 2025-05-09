@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufReader;
 
-type BootTimeSumMap = HashMap<u16, Vec<(u8, u8, u8, u8)>>;
+type TimeSumMap = HashMap<u16, Vec<(u8, u8, u8, u8)>>;
 
-pub fn build_boot_time_sum_map() -> BootTimeSumMap {
-    let mut map: BootTimeSumMap = HashMap::new();
+pub fn build_time_sum_map() -> TimeSumMap {
+    let mut map: TimeSumMap = HashMap::new();
 
     for month in 1..=12 {
         let max_day = match month {
@@ -28,23 +28,23 @@ pub fn build_boot_time_sum_map() -> BootTimeSumMap {
     return map;
 }
 
-pub fn save_json(map: &BootTimeSumMap, path: &str) {
+pub fn save_json(map: &TimeSumMap, path: &str) {
     let file = File::create(path).expect("Failed to create JSON file");
     serde_json::to_writer_pretty(file, map).expect("Failed to write JSON");
 }
 
-pub fn save_bincode(map: &BootTimeSumMap, path: &str) {
+pub fn save_bincode(map: &TimeSumMap, path: &str) {
     let encoded = bincode::serialize(map).expect("Failed to encode");
     std::fs::write(path, encoded).expect("Failed to write bincode");
 }
 
-pub fn load_json(path: &str) -> BootTimeSumMap {
+pub fn load_json(path: &str) -> TimeSumMap {
     let file = File::open(path).expect("Failed to open JSON file");
     let reader = BufReader::new(file);
     serde_json::from_reader(reader).expect("Failed to parse JSON")
 }
 
-pub fn load_bincode(path: &str) -> BootTimeSumMap {
+pub fn load_bincode(path: &str) -> TimeSumMap {
     let encoded = std::fs::read(path).expect("Failed to read bincode");
     bincode::deserialize(&encoded).expect("Failed to decode")
 }
