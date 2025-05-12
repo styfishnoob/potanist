@@ -30,7 +30,7 @@ impl RngMT {
         for i in 0..N {
             let a = self.table[i] & UPPER_MASK;
             let b = self.table[(i + 1) % N] & LOWER_MASK;
-            let mut k0 = a | b;
+            let k0 = a | b;
             let mut k1 = k0 >> 1;
 
             let k2_index = if i < (N - M) { i + M } else { i + M - N };
