@@ -63,25 +63,13 @@ impl SeedSearcher {
                 ],
                 0..=0xffff
             ) {
-                let (iv_1st_seed, iv_group) = if forward {
-                    let iv_1st_seed = self
-                        .rng_analyzer
-                        .rands_to_seed(iv_smaller_group_rand_high, iv_smaller_group_rand_low);
-                    let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
-                    let iv_group = self
-                        .rng_analyzer
-                        .rand_to_iv_group(self.rng_analyzer.extract_rand(iv_2nd_seed));
-                    (iv_1st_seed, iv_group)
-                } else {
-                    let iv_2nd_seed = self
-                        .rng_analyzer
-                        .rands_to_seed(iv_smaller_group_rand_high, iv_smaller_group_rand_low);
-                    let iv_1st_seed = self.rng_lc.prev(iv_2nd_seed);
-                    let iv_group = self
-                        .rng_analyzer
-                        .rand_to_iv_group(self.rng_analyzer.extract_rand(iv_1st_seed));
-                    (iv_1st_seed, iv_group)
-                };
+                let (iv_1st_seed, iv_2nd_iv_group) = derive_iv_1st_seed_and_iv_2nd_iv_group(
+                    iv_smaller_group_rand_high,
+                    iv_smaller_group_rand_low,
+                    forward,
+                    &self.rng_analyzer,
+                    &self.rng_lc,
+                );
 
                 let extracted_status = self
                     .seed_analyzer
@@ -89,7 +77,7 @@ impl SeedSearcher {
 
                 let ivs_contains_range = larger_group
                     .iter()
-                    .zip(iv_group.iter())
+                    .zip(iv_2nd_iv_group.iter())
                     .all(|(range, value)| range.contains(value));
 
                 let check_status = check_status(&extracted_status, &search_seed_params);
@@ -178,10 +166,26 @@ fn compare_range_group_by_complexity(
     }
 }
 
-fn is_shiny(tid: Rand, sid: Rand, pid: Pid) -> bool {
-    let tsid_xor = (tid ^ sid) as u32;
-    let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
-    return (tsid_xor ^ pid_xor) <= 7;
+fn derive_iv_1st_seed_and_iv_2nd_iv_group(
+    iv_smaller_group_rand_high: Rand,
+    iv_smaller_group_rand_low: Rand,
+    forward: bool,
+    rng_analyzer: &RandAnalyzer,
+    rng_lc: &RngLC,
+) -> (Seed, IVGroup) {
+    if forward {
+        let iv_1st_seed =
+            rng_analyzer.rands_to_seed(iv_smaller_group_rand_high, iv_smaller_group_rand_low);
+        let iv_2nd_seed = rng_lc.next(iv_1st_seed);
+        let iv_2nd_iv_group = rng_analyzer.rand_to_iv_group(rng_analyzer.extract_rand(iv_2nd_seed));
+        (iv_1st_seed, iv_2nd_iv_group)
+    } else {
+        let iv_2nd_seed =
+            rng_analyzer.rands_to_seed(iv_smaller_group_rand_high, iv_smaller_group_rand_low);
+        let iv_1st_seed = rng_lc.prev(iv_2nd_seed);
+        let iv_2nd_iv_group = rng_analyzer.rand_to_iv_group(rng_analyzer.extract_rand(iv_1st_seed));
+        (iv_1st_seed, iv_2nd_iv_group)
+    }
 }
 
 fn check_status(extracted_status: &Status, search_seed_params: &SearchSeedParams) -> bool {
@@ -199,12 +203,11 @@ fn check_status(extracted_status: &Status, search_seed_params: &SearchSeedParams
             .hidden_power_power
             .contains(&extracted_status.hidden_power_power);
 
-    let check_shiny = !search_seed_params.shiny
-        || is_shiny(
-            search_seed_params.tid,
-            search_seed_params.sid,
-            extracted_status.pid,
-        );
+    let check_shiny = !search_seed_params.shiny || {
+        let tsid_xor = (search_seed_params.tid ^ search_seed_params.sid) as u32;
+        let pid_xor = ((extracted_status.pid >> 16) ^ (extracted_status.pid & 0xffff)) as u32;
+        (tsid_xor ^ pid_xor) <= 7
+    };
 
     return check_nature
         && check_ability
