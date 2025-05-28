@@ -1,3 +1,5 @@
+use std::ops::RangeInclusive;
+
 use itertools::iproduct;
 
 use super::rand_analyzer::RandAnalyzer;
@@ -50,10 +52,8 @@ impl SeedSearcher {
             smaller_group[1].clone(),
             smaller_group[2].clone()
         ) {
-            let iv_smaller_group_rand_high_msb_0 = self
-                .rng_analyzer
-                .iv_group_to_rand([iv_range_1, iv_range_2, iv_range_3]);
-
+            let iv_group: IVGroup = [iv_range_1, iv_range_2, iv_range_3];
+            let iv_smaller_group_rand_high_msb_0 = self.rng_analyzer.iv_group_to_rand(iv_group);
             let iv_smaller_group_rand_high_msb_1 = (1 << 15) | iv_smaller_group_rand_high_msb_0;
 
             for (iv_smaller_group_rand_high, iv_smaller_group_rand_low) in iproduct!(
@@ -71,15 +71,12 @@ impl SeedSearcher {
                     &self.rng_lc,
                 );
 
-                let extracted_status = self
-                    .seed_analyzer
-                    .extract_status_from_iv_1st_seed(iv_1st_seed);
-
                 let ivs_contains_range = larger_group
                     .iter()
                     .zip(iv_2nd_iv_group.iter())
                     .all(|(range, value)| range.contains(value));
 
+                let extracted_status = self.seed_analyzer.extract_status(iv_1st_seed);
                 let check_status = check_status(&extracted_status, &search_seed_params);
 
                 if ivs_contains_range && check_status {
@@ -107,29 +104,34 @@ impl SeedSearcher {
     */
     pub fn search_initial_seed(
         &self,
-        seed: Seed,
-        max_advances: u16,
-        min_waiting_frame: u16,
-    ) -> Seed {
-        let mut _seed = self.rng_lc.next(seed); // 引数で与えられたシードが有効かもしれないので、一度nextしてチェックする
-        let mut advances = 0; // 消費数
+        iv_1st_seed: Seed,
+        advance_range: RangeInclusive<u16>,
+        frame_sum_range: RangeInclusive<u16>,
+    ) -> Option<(Seed, u16)> {
+        let mut initial_seed = self.rng_lc.prev(iv_1st_seed); // 一つ目のpidシードが有効かもしれないので、一回だけprevして一つ目が有効かどうか確認する
+        let mut advances: u16 = 0; // 消費数
         let mut found = false;
 
-        while found == false && advances < max_advances {
-            _seed = self.rng_lc.prev(_seed);
-
-            let hour = ((_seed >> 16) & 0xff) as u8;
-            let frame_sum = (_seed & 0xffff) as u16;
+        while found == false && advance_range.contains(&advances) {
+            initial_seed = self.rng_lc.prev(initial_seed);
             advances += 1;
 
-            if 24 <= hour || min_waiting_frame < frame_sum {
+            let hour = ((initial_seed >> 16) & 0xff) as u8;
+            let frame_sum = (initial_seed & 0xffff) as u16;
+
+            if 24 <= hour || !frame_sum_range.contains(&frame_sum) {
                 continue;
             }
 
             found = true;
         }
 
-        return _seed;
+        // 最初 iv_1st -> pid_2nd -> pid_1st と二回prevする必要があるものの、一回しかprevしていないため、一回分消費数を減らす。
+        if found {
+            return Some((initial_seed, advances - 1));
+        } else {
+            return None;
+        }
     }
 }
 
