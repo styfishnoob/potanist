@@ -4,6 +4,7 @@ use super::rand_analyzer::RandAnalyzer;
 use super::rng_lc::RngLC;
 use super::seed_analyzer::SeedAnalyzer;
 use crate::types::iv::*;
+use crate::types::status::Status;
 use crate::types::types::*;
 use serde::Deserialize;
 
@@ -91,34 +92,9 @@ impl SeedSearcher {
                     .zip(iv_group.iter())
                     .all(|(range, value)| range.contains(value));
 
-                let check_nature = search_seed_params.nature == -1
-                    || search_seed_params.nature == extracted_status.nature;
+                let check_status = check_status(&extracted_status, &search_seed_params);
 
-                let check_ability = search_seed_params.ability == -1
-                    || search_seed_params.ability == extracted_status.ability;
-
-                let check_hidden_power_type = search_seed_params.hidden_power_type == -1
-                    || search_seed_params.hidden_power_type == extracted_status.hidden_power_type;
-
-                let check_hidden_power_power = search_seed_params.hidden_power_type == -1
-                    || search_seed_params
-                        .hidden_power_power
-                        .contains(&extracted_status.hidden_power_power);
-
-                let check_shiny = !search_seed_params.shiny
-                    || is_shiny(
-                        search_seed_params.tid,
-                        search_seed_params.sid,
-                        extracted_status.pid,
-                    );
-
-                if ivs_contains_range
-                    && check_nature
-                    && check_ability
-                    && check_hidden_power_type
-                    && check_hidden_power_power
-                    && check_shiny
-                {
+                if ivs_contains_range && check_status {
                     matched_iv_1st_seed_vec.push(iv_1st_seed)
                 }
             }
@@ -206,4 +182,33 @@ fn is_shiny(tid: Rand, sid: Rand, pid: Pid) -> bool {
     let tsid_xor = (tid ^ sid) as u32;
     let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
     return (tsid_xor ^ pid_xor) <= 7;
+}
+
+fn check_status(extracted_status: &Status, search_seed_params: &SearchSeedParams) -> bool {
+    let check_nature =
+        search_seed_params.nature == -1 || search_seed_params.nature == extracted_status.nature;
+
+    let check_ability =
+        search_seed_params.ability == -1 || search_seed_params.ability == extracted_status.ability;
+
+    let check_hidden_power_type = search_seed_params.hidden_power_type == -1
+        || search_seed_params.hidden_power_type == extracted_status.hidden_power_type;
+
+    let check_hidden_power_power = search_seed_params.hidden_power_type == -1
+        || search_seed_params
+            .hidden_power_power
+            .contains(&extracted_status.hidden_power_power);
+
+    let check_shiny = !search_seed_params.shiny
+        || is_shiny(
+            search_seed_params.tid,
+            search_seed_params.sid,
+            extracted_status.pid,
+        );
+
+    return check_nature
+        && check_ability
+        && check_hidden_power_type
+        && check_hidden_power_power
+        && check_shiny;
 }
