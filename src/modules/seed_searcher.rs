@@ -1,14 +1,14 @@
-use std::ops::RangeInclusive;
-
 use itertools::iproduct;
+use serde::Deserialize;
+use std::ops::RangeInclusive;
 
 use super::rand_analyzer::RandAnalyzer;
 use super::rng_lc::RngLC;
+use super::rng_mt::RngMT;
 use super::seed_analyzer::SeedAnalyzer;
 use crate::types::iv::*;
 use crate::types::status::Status;
 use crate::types::types::*;
-use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchSeedParams {
@@ -38,9 +38,9 @@ impl SeedSearcher {
     }
 
     /*
-      個体値/性格/特性/めざパ-タイプ/めざパ-威力/色違い(TID/SID)
-      これらのパラメータから目的のシードを探索する。
-      この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
+        個体値/性格/特性/めざパ-タイプ/めざパ-威力/色違い(TID/SID)
+        これらのパラメータから目的のシードを探索する。
+        この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
     */
     pub fn search_seed(&self, search_seed_params: SearchSeedParams) -> Vec<Seed> {
         let mut matched_iv_1st_seed_vec: Vec<Seed> = Vec::new();
@@ -88,6 +88,61 @@ impl SeedSearcher {
         return matched_iv_1st_seed_vec;
     }
 
+    pub fn search_egg_pid_seed(
+        &self,
+        max_advances: u16,
+        frame_sum_range: RangeInclusive<u16>,
+        tid: u16,
+        sid: u16,
+    ) {
+        /*
+            time_sum が 0..=0xff な理由は、ffから値が折り返すため。
+            0(0x0), 1(0x1), ... , 255(0xff), 256(0x100), 257(0x101)
+            で、time_sum は 実質 0xff されるため、256(0x100) は 0x00 になる。
+            そのため 256(0x100) は 0(0x0) と同じ値になる。
+            よって、256(0x00) = 0, 257(0x101) = 1, 258(0x102) = 2 ... と、256を折り返しにそれぞれ対応していく。
+            なので、0 から 255 まで回すだけでよく、time_sumを表示する際は、0x00 と 0x00 の左端に 1 を足し、256(0x100) を表示させればいい。
+            ただし、time_sum の最大値は 12 * 31 + 59 + 59 の 490(0x1ea) で、それに対応する 234(0xea) 以降は実現不可能な値になるため注意。
+        */
+        'time_sum_loop: for time_sum in 0..=0xff {
+            for (hour, frame_sum) in iproduct!(0..=23, frame_sum_range.clone()) {
+                let initial_seed =
+                    (time_sum as Seed) << 24 | (hour as Seed) << 12 | frame_sum as Seed;
+                let mut rng_mt = RngMT::new(initial_seed);
+
+                for advances in 0..=max_advances {
+                    let next_seed = rng_mt.next();
+                    let pid = {
+                        let k0 = (next_seed / 0x800) ^ next_seed;
+                        let k1 = (k0.wrapping_mul(0x80) & 0x9d2c5680) ^ k0;
+                        let k2 = (k1.wrapping_mul(0x8000) & 0xefc60000) ^ k1;
+                        (k2 / 0x40000) ^ k2
+                    };
+
+                    let nature_num = (pid % 25) as i16;
+                    let gender_num = (pid & 0xff) as i16;
+                    let ability_num = (pid & 1) as i16;
+                    let is_shiny = is_shiny(tid, sid, pid);
+
+                    if nature_num == 3 && ability_num == 0 && 127 <= gender_num && is_shiny {
+                        println!("性格: {}", nature_num);
+                        println!("性別: {}", gender_num);
+                        println!("特性: {}", ability_num);
+                        println!("PID: {:0x}", pid);
+                        println!("消費数: {}", advances);
+                        println!("色違い: {}", is_shiny);
+                        if (1 << 8) | time_sum < 490 {
+                            println!("time_sum: {} {}", time_sum, (1 << 8) | time_sum);
+                        } else {
+                            println!("time_sum: {}", time_sum);
+                        }
+                        continue 'time_sum_loop; // 外側のループへ
+                    }
+                }
+            }
+        }
+    }
+
     /*
       search_seedで求めたシードから、初期シードを求める。
       シードが以下の値に一致しない(hourの部分が78で、24を超えているなど)場合、いつ起動しても到達不可能のため、
@@ -96,7 +151,7 @@ impl SeedSearcher {
       seed: 0x12345678
       12   -> time_sum      (month * day + minute + second)
       34   -> hour          (ここが24以上だと、いつ起動してもこのシードにならないのでcontinue)
-      5678 -> waiting_frame (frame + (year - 2000)
+      5678 -> frame_sum (frame + (year - 2000)
 
       ※ ソフト選択からつづきからまで約14秒かかり、その内空白時間が約4秒(DPPt/HGSSによって異なる)のため、つづきからを押すまでに最速でも10秒はかかる。
         よってframeが600F(10秒)くらいはないと間に合わないことになる。
@@ -216,4 +271,10 @@ fn check_status(extracted_status: &Status, search_seed_params: &SearchSeedParams
         && check_hidden_power_type
         && check_hidden_power_power
         && check_shiny;
+}
+
+fn is_shiny(tid: Rand, sid: Rand, pid: Pid) -> bool {
+    let tsid_xor = (tid ^ sid) as u32;
+    let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
+    (tsid_xor ^ pid_xor) <= 7
 }
