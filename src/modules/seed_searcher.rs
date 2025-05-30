@@ -11,7 +11,7 @@ use crate::types::status::Status;
 use crate::types::types::*;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct SearchSeedParams {
+pub struct SearchParams {
     pub iv_ranges: IVRanges,
     pub nature: i16,
     pub ability: i16,
@@ -40,7 +40,7 @@ impl SeedSearcher {
         これらのパラメータから目的のシードを探索する。
         この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
     */
-    pub fn search_seed(&self, params: SearchSeedParams) -> Vec<Seed> {
+    pub fn search_seed(&self, params: SearchParams) -> Vec<Seed> {
         let mut matched_iv_1st_seed_vec: Vec<Seed> = Vec::new();
 
         let iv_range_group_1 = [
