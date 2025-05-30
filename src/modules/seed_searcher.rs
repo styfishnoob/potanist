@@ -40,8 +40,9 @@ impl SeedSearcher {
     /*
         個体値/性格/特性/めざパ-タイプ/めざパ-威力/色違い(TID/SID)
         これらのパラメータから目的のシードを探索する。
+        この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
     */
-    pub fn search_seed(&self, params: SearchParams) -> Vec<Seed> {
+    pub fn search_seeds_from_status(&self, params: SearchParams) -> Vec<Seed> {
         let mut result: Vec<Seed> = Vec::new();
 
         let iv_range_group_1 = [
@@ -106,15 +107,7 @@ impl SeedSearcher {
                 let check_shiny = !params.shiny || is_shiny(params.tid, params.sid, status.pid);
 
                 if ivs_contains_range && check_nature && check_ability && check_shiny {
-                    let initial_seed = self.search_initial_seed(
-                        iv_1st_seed,
-                        params.max_advances,
-                        params.max_frame_sum,
-                    );
-
-                    if let Some(seed) = initial_seed {
-                        result.push(seed.0);
-                    }
+                    result.push(iv_1st_seed);
                 }
             }
         }
@@ -130,7 +123,7 @@ impl SeedSearcher {
         なので、0 から 255 まで回すだけでよく、time_sumを表示する際は、0x00 と 0x00 の左端に 1 を足し、256(0x100) を表示させればいい。
         ただし、time_sum の最大値は 12 * 31 + 59 + 59 の 490(0x1ea) で、それに対応する 234(0xea) 以降は実現不可能な値になるため注意。
     */
-    pub fn search_egg_pid_seed(&self, params: SearchParams) {
+    pub fn search_seeds_from_egg_pid(&self, params: SearchParams) {
         'time_sum_loop: for time_sum in 0..=0xff {
             for (hour, frame_sum) in iproduct!(0..=23, 600..=params.max_frame_sum) {
                 let initial_seed =
