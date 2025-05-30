@@ -18,6 +18,8 @@ pub struct SearchParams {
     pub shiny: bool,
     pub tid: Rand,
     pub sid: Rand,
+    pub max_advances: u16,
+    pub max_frame_sum: u16, // 最低値は600で固定
 }
 
 pub struct SeedSearcher {
@@ -38,10 +40,9 @@ impl SeedSearcher {
     /*
         個体値/性格/特性/めざパ-タイプ/めざパ-威力/色違い(TID/SID)
         これらのパラメータから目的のシードを探索する。
-        この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
     */
     pub fn search_seed(&self, params: SearchParams) -> Vec<Seed> {
-        let mut matched_iv_1st_seed_vec: Vec<Seed> = Vec::new();
+        let mut result: Vec<Seed> = Vec::new();
 
         let iv_range_group_1 = [
             params.iv_ranges.hp.clone(),
@@ -105,36 +106,38 @@ impl SeedSearcher {
                 let check_shiny = !params.shiny || is_shiny(params.tid, params.sid, status.pid);
 
                 if ivs_contains_range && check_nature && check_ability && check_shiny {
-                    matched_iv_1st_seed_vec.push(iv_1st_seed)
+                    let initial_seed = self.search_initial_seed(
+                        iv_1st_seed,
+                        params.max_advances,
+                        params.max_frame_sum,
+                    );
+
+                    if let Some(seed) = initial_seed {
+                        result.push(seed.0);
+                    }
                 }
             }
         }
 
-        return matched_iv_1st_seed_vec;
+        return result;
     }
 
-    pub fn search_egg_pid_seed(
-        &self,
-        max_advances: u16,
-        frame_sum_range: RangeInclusive<u16>,
-        tid: u16,
-        sid: u16,
-    ) {
-        /*
-            time_sum が 0..=0xff な理由は、ffから値が折り返すため。
-            0(0x0), 1(0x1), ... , 255(0xff), 256(0x100), 257(0x101)
-            で、time_sum は実質 & 0xff されるため、256(0x100) は 0x00 になり、
-            256(0x00) = 0, 257(0x101) = 1, 258(0x102) = 2 ... と、256を折り返しにそれぞれ　0, 1, 2, ...　に対応していく。
-            なので、0 から 255 まで回すだけでよく、time_sumを表示する際は、0x00 と 0x00 の左端に 1 を足し、256(0x100) を表示させればいい。
-            ただし、time_sum の最大値は 12 * 31 + 59 + 59 の 490(0x1ea) で、それに対応する 234(0xea) 以降は実現不可能な値になるため注意。
-        */
+    /*
+        time_sum が 0..=0xff な理由は、ffから値が折り返すため。
+        0(0x0), 1(0x1), ... , 255(0xff), 256(0x100), 257(0x101)
+        で、time_sum は実質 & 0xff されるため、256(0x100) は 0x00 になり、
+        256(0x00) = 0, 257(0x101) = 1, 258(0x102) = 2 ... と、256を折り返しにそれぞれ　0, 1, 2, ...　に対応していく。
+        なので、0 から 255 まで回すだけでよく、time_sumを表示する際は、0x00 と 0x00 の左端に 1 を足し、256(0x100) を表示させればいい。
+        ただし、time_sum の最大値は 12 * 31 + 59 + 59 の 490(0x1ea) で、それに対応する 234(0xea) 以降は実現不可能な値になるため注意。
+    */
+    pub fn search_egg_pid_seed(&self, params: SearchParams) {
         'time_sum_loop: for time_sum in 0..=0xff {
-            for (hour, frame_sum) in iproduct!(0..=23, frame_sum_range.clone()) {
+            for (hour, frame_sum) in iproduct!(0..=23, 600..=params.max_frame_sum) {
                 let initial_seed =
                     (time_sum as Seed) << 24 | (hour as Seed) << 12 | frame_sum as Seed;
                 let mut rng_mt = RngMT::new(initial_seed);
 
-                for advances in 0..=max_advances {
+                for advances in 0..=params.max_advances {
                     let next_seed = rng_mt.next();
                     let pid = {
                         let k0 = (next_seed / 0x800) ^ next_seed;
@@ -146,7 +149,7 @@ impl SeedSearcher {
                     let nature_num = (pid % 25) as i16;
                     let gender_num = (pid & 0xff) as i16;
                     let ability_num = (pid & 1) as i16;
-                    let is_shiny = is_shiny(tid, sid, pid);
+                    let is_shiny = is_shiny(params.tid, params.sid, pid);
 
                     if nature_num == 3 && ability_num == 0 && 127 <= gender_num && is_shiny {
                         continue 'time_sum_loop; // 外側のループへ
@@ -173,21 +176,22 @@ impl SeedSearcher {
     pub fn search_initial_seed(
         &self,
         iv_1st_seed: Seed,
-        advance_range: RangeInclusive<u16>,
-        frame_sum_range: RangeInclusive<u16>,
+        max_advances: u16,
+        max_frame_sum: u16,
     ) -> Option<(Seed, u16)> {
         let mut initial_seed = self.rng_lc.prev(iv_1st_seed); // 一つ目のpidシードが有効かもしれないので、一回だけprevして一つ目が有効かどうか確認する
         let mut advances: u16 = 0; // 消費数
         let mut found = false;
 
-        while found == false && advance_range.contains(&advances) {
+        while found == false && (0..=max_advances).contains(&advances) {
             initial_seed = self.rng_lc.prev(initial_seed);
             advances += 1;
 
             let hour = ((initial_seed >> 16) & 0xff) as u8;
             let frame_sum = (initial_seed & 0xffff) as u16;
 
-            if 24 <= hour || !frame_sum_range.contains(&frame_sum) {
+            // frame_sum の最低値は600で固定する。
+            if 24 <= hour || !(600..=max_frame_sum).contains(&frame_sum) {
                 continue;
             }
 
