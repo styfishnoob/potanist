@@ -324,32 +324,38 @@ impl SeedSearcher {
         iv_1st_seed: Seed,
         max_advances: u16,
         max_frame_sum: u16,
-    ) -> Option<(Seed, u16)> {
+    ) -> Option<(Seed, u16, u16)> {
         let mut initial_seed = self.rng_lc.prev(iv_1st_seed); // 一つ目のpidシードが有効かもしれないので、一回だけprevして一つ目が有効かどうか確認する
         let mut advances: u16 = 0; // 消費数
-        let mut found = false;
 
-        while found == false && (0..=max_advances).contains(&advances) {
+        while (0..=max_advances).contains(&advances) {
             initial_seed = self.rng_lc.prev(initial_seed);
             advances += 1;
 
-            let hour = ((initial_seed >> 16) & 0xff) as u8;
+            let time_sum = ((initial_seed >> 24) & 0xff) as u16;
+            let hour = ((initial_seed >> 16) & 0xff) as u16;
             let frame_sum = (initial_seed & 0xffff) as u16;
 
-            // frame_sum の最低値は600で固定する。
-            if 24 <= hour || !(600..=max_frame_sum).contains(&frame_sum) {
+            // time_sum の最大値は 12 * 31 + 59 + 59 の 490
+            if time_sum > 490 {
                 continue;
             }
 
-            found = true;
+            // frame_sum の最低値は600で固定する。
+            if 24 <= hour {
+                continue;
+            }
+
+            // +99 はDSで設定できる最大の年
+            if (600..=max_frame_sum + 99).contains(&frame_sum) == false {
+                continue;
+            }
+
+            // 最初 iv_1st -> pid_2nd -> pid_1st と二回prevする必要があるものの、一回しかprevしていないため、一回分消費数を減らす。
+            return Some((initial_seed, advances - 1, frame_sum));
         }
 
-        // 最初 iv_1st -> pid_2nd -> pid_1st と二回prevする必要があるものの、一回しかprevしていないため、一回分消費数を減らす。
-        if found {
-            return Some((initial_seed, advances - 1));
-        } else {
-            return None;
-        }
+        return None;
     }
 }
 
