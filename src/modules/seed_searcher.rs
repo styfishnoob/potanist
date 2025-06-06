@@ -152,6 +152,159 @@ impl SeedSearcher {
         }
     }
 
+    pub fn search_seeds_from_egg_iv(
+        &self,
+        params: SearchParams,
+        parent_ivs_0: IVs,
+        parent_ivs_1: IVs,
+    ) -> Vec<Seed> {
+        let mut result: Vec<Seed> = Vec::new();
+
+        let iv_range_group_1 = [
+            params.iv_ranges.hp.clone(),
+            params.iv_ranges.attack.clone(),
+            params.iv_ranges.defense.clone(),
+        ];
+
+        let iv_range_group_2 = [
+            params.iv_ranges.speed.clone(),
+            params.iv_ranges.sp_attack.clone(),
+            params.iv_ranges.sp_defense.clone(),
+        ];
+
+        let calc_complexity = |iv_ranges: &[IVRange; 3]| {
+            iv_ranges
+                .iter()
+                .fold(1, |acc, range| acc * (range.end() - range.start()))
+        };
+
+        let complexity_1 = calc_complexity(&iv_range_group_1);
+        let complexity_2 = calc_complexity(&iv_range_group_2);
+
+        let (smaller_group, larger_group, forward) = if complexity_1 <= complexity_2 {
+            (iv_range_group_1.clone(), iv_range_group_2.clone(), true)
+        } else {
+            (iv_range_group_2.clone(), iv_range_group_1.clone(), false)
+        };
+
+        for (iv_1, iv_2, iv_3) in iproduct!(
+            smaller_group[0].clone(),
+            smaller_group[1].clone(),
+            smaller_group[2].clone()
+        ) {
+            let iv_group: IVGroup = [iv_1, iv_2, iv_3];
+            let iv_rand_high_msb_0 = self.rng_analyzer.iv_group_to_rand(iv_group);
+            let iv_rand_high_msb_1 = (1 << 15) | iv_rand_high_msb_0;
+            let iv_rand_high_group = [iv_rand_high_msb_0, iv_rand_high_msb_1];
+
+            for (iv_rand_high, iv_rand_low) in iproduct!(iv_rand_high_group, 0..=0xffff) {
+                let mut ivs: [u8; 6] = [0; 6];
+
+                let (iv_1st_seed, iv_2nd_seed, iv_2nd_iv_group) = if forward {
+                    let iv_1st_seed = self.rng_analyzer.rands_to_seed(iv_rand_high, iv_rand_low);
+                    let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
+                    let iv_2nd_rand = self.rng_analyzer.extract_rand(iv_2nd_seed);
+                    let iv_2nd_iv_group = self.rng_analyzer.rand_to_iv_group(iv_2nd_rand);
+                    ivs[0..3].copy_from_slice(&iv_group);
+                    ivs[3..6].copy_from_slice(&iv_2nd_iv_group);
+                    (iv_1st_seed, iv_2nd_seed, iv_2nd_iv_group)
+                } else {
+                    let iv_2nd_seed = self.rng_analyzer.rands_to_seed(iv_rand_high, iv_rand_low);
+                    let iv_1st_seed = self.rng_lc.prev(iv_2nd_seed);
+                    let iv_1st_rand = self.rng_analyzer.extract_rand(iv_1st_seed);
+                    let iv_2nd_iv_group = self.rng_analyzer.rand_to_iv_group(iv_1st_rand);
+                    ivs[0..3].copy_from_slice(&iv_2nd_iv_group);
+                    ivs[3..6].copy_from_slice(&iv_group);
+                    (iv_1st_seed, iv_2nd_seed, iv_2nd_iv_group)
+                };
+
+                let iv_2nd_iv_group_contains_range = larger_group
+                    .iter()
+                    .zip(iv_2nd_iv_group.iter())
+                    .all(|(range, value)| range.contains(value));
+
+                if iv_2nd_iv_group_contains_range {
+                    result.push(iv_1st_seed);
+                    continue;
+                }
+
+                let parent_ivs_0: [IV; 6] = [
+                    parent_ivs_0.hp,
+                    parent_ivs_0.attack,
+                    parent_ivs_0.defense,
+                    parent_ivs_0.speed,
+                    parent_ivs_0.sp_attack,
+                    parent_ivs_0.sp_defense,
+                ];
+
+                let parent_ivs_1: [IV; 6] = [
+                    parent_ivs_1.hp,
+                    parent_ivs_1.attack,
+                    parent_ivs_1.defense,
+                    parent_ivs_1.speed,
+                    parent_ivs_1.sp_attack,
+                    parent_ivs_1.sp_defense,
+                ];
+
+                // 0: hp | 1: attack | 2: defense | 3: speed | 4: sp_attack | 5: sp_defense
+                let mut gene_loci: Vec<u8> = [0, 1, 2, 3, 4, 5].to_vec();
+                let parents_ivs = [parent_ivs_0, parent_ivs_1];
+
+                let gene_locus_seed_1 = self.rng_lc.next(iv_2nd_seed);
+                let gene_locus_seed_2 = self.rng_lc.next(gene_locus_seed_1);
+                let gene_locus_seed_3 = self.rng_lc.next(gene_locus_seed_2);
+                let gene_parent_seed_1 = self.rng_lc.next(gene_locus_seed_3);
+                let gene_parent_seed_2 = self.rng_lc.next(gene_parent_seed_1);
+                let gene_parent_seed_3 = self.rng_lc.next(gene_parent_seed_2);
+
+                let gene_locus_rand_1 = self.rng_analyzer.extract_rand(gene_locus_seed_1);
+                let gene_locus_rand_2 = self.rng_analyzer.extract_rand(gene_locus_seed_2);
+                let gene_locus_rand_3 = self.rng_analyzer.extract_rand(gene_locus_seed_3);
+                let gene_parent_rand_1 = self.rng_analyzer.extract_rand(gene_parent_seed_1);
+                let gene_parent_rand_2 = self.rng_analyzer.extract_rand(gene_parent_seed_2);
+                let gene_parent_rand_3 = self.rng_analyzer.extract_rand(gene_parent_seed_3);
+
+                let gene_locus_index_1 = (gene_locus_rand_1 % 6) as usize; // gene_loci のインデックス番号
+                let gene_locus_index_2 = (gene_locus_rand_2 % 5) as usize; // gene_loci のインデックス番号
+                let gene_locus_index_3 = (gene_locus_rand_3 % 4) as usize; // gene_loci のインデックス番号
+                let gene_parent_num_1 = (gene_parent_rand_1 % 2) as usize; // 参照する親番号 (0 -> 先親 | 1 -> 後親)
+                let gene_parent_num_2 = (gene_parent_rand_2 % 2) as usize; // 参照する親番号 (0 -> 先親 | 1 -> 後親)
+                let gene_parent_num_3 = (gene_parent_rand_3 % 2) as usize; // 参照する親番号 (0 -> 先親 | 1 -> 後親)
+
+                let gene_locus_1 = gene_loci[gene_locus_index_1] as usize;
+                gene_loci.remove(gene_locus_index_1);
+
+                let gene_locus_2 = gene_loci[gene_locus_index_2] as usize;
+                gene_loci.remove(gene_locus_index_2);
+
+                let gene_locus_3 = gene_loci[gene_locus_index_3] as usize;
+                gene_loci.remove(gene_locus_index_3);
+
+                ivs[gene_locus_1] = parents_ivs[gene_parent_num_1][gene_locus_1];
+                ivs[gene_locus_2] = parents_ivs[gene_parent_num_2][gene_locus_2];
+                ivs[gene_locus_3] = parents_ivs[gene_parent_num_3][gene_locus_3];
+
+                let all_ivs_contains_range = [
+                    iv_range_group_1[0].clone(),
+                    iv_range_group_1[1].clone(),
+                    iv_range_group_1[2].clone(),
+                    iv_range_group_2[0].clone(),
+                    iv_range_group_2[1].clone(),
+                    iv_range_group_2[2].clone(),
+                ]
+                .iter()
+                .zip(ivs.iter())
+                .all(|(range, value)| range.contains(value));
+
+                if all_ivs_contains_range {
+                    result.push(iv_1st_seed);
+                }
+            }
+        }
+
+        return result;
+    }
+
     /*
       search_seedで求めたシードから、初期シードを求める。
       シードが以下の値に一致しない(hourの部分が78で、24を超えているなど)場合、いつ起動しても到達不可能のため、
