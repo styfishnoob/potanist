@@ -1,4 +1,4 @@
-use crate::types::types::*;
+use crate::types::seed::*;
 
 const N: usize = 624;
 const M: usize = 397;
@@ -12,9 +12,9 @@ pub struct RngMT {
 }
 
 impl RngMT {
-    pub fn new(seed: Seed) -> Self {
+    pub fn new(initial_seed: InitialSeed) -> Self {
         let mut table = [0u32; N];
-        table[0] = seed;
+        table[0] = initial_seed;
 
         for i in 1..N {
             let prev = table[i - 1];
@@ -57,7 +57,7 @@ impl RngMT {
         return next_seed;
     }
 
-    pub fn get_pid(&mut self, seed: Seed) -> Pid {
+    pub fn get_pid(&mut self, seed: Seed) -> PID {
         let k0 = (seed / 0x800) ^ seed;
         let k1 = ((k0.wrapping_mul(0x80)) & 0x9d2c5680) ^ k0;
         let k2 = ((k1.wrapping_mul(0x8000)) & 0xefc60000) ^ k1;

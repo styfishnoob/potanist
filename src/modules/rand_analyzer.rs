@@ -1,4 +1,4 @@
-use crate::types::{iv::*, types::*};
+use crate::types::{iv::*, seed::*};
 
 pub struct RandAnalyzer {}
 

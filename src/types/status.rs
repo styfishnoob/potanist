@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{iv::*, types::*};
+use super::{iv::*, seed::*};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Status {
@@ -10,5 +10,5 @@ pub struct Status {
     pub ability: i16,
     pub hidden_power_type: i16,
     pub hidden_power_power: u8,
-    pub pid: Pid,
+    pub pid: PID,
 }

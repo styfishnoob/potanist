@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     constants::time_sum_map,
-    types::{iv::*, status::*, types::*},
+    types::{iv::*, seed::*, status::*},
 };
 
 use super::{rand_analyzer::RandAnalyzer, rng_lc::RngLC};
@@ -20,7 +20,7 @@ impl SeedAnalyzer {
         }
     }
 
-    pub fn extract_status_from_iv_1st_seed(&self, iv_1st_seed: Seed) -> Status {
+    pub fn extract_status(&self, iv_1st_seed: IV1stSeed) -> Status {
         let pid_2nd_seed = self.rng_lc.prev(iv_1st_seed);
         let pid_1st_seed = self.rng_lc.prev(pid_2nd_seed);
         let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
@@ -29,7 +29,7 @@ impl SeedAnalyzer {
         let pid_2nd_rand = self.rng_analyzer.extract_rand(pid_2nd_seed);
         let iv_1st_rand = self.rng_analyzer.extract_rand(iv_1st_seed);
         let iv_2nd_rand = self.rng_analyzer.extract_rand(iv_2nd_seed);
-        let pid = (pid_2nd_rand as Pid) << 16 | (pid_1st_rand as Pid);
+        let pid = (pid_2nd_rand as PID) << 16 | (pid_1st_rand as PID);
 
         let ivs_1st = self.rng_analyzer.rand_to_iv_group(iv_1st_rand);
         let ivs_2nd = self.rng_analyzer.rand_to_iv_group(iv_2nd_rand);
@@ -64,9 +64,9 @@ impl SeedAnalyzer {
       HashMap<year, ((month, day), (hour, minutes, boot_time_sec, second))>
       HashKey(2048): ((1, 1), (20, 03, 10, 45)) -> 2048年 1月1日 20時03分10秒に選択 45秒につづきから選択
     */
-    pub fn create_boot_time_map_from_initial_seed(
+    pub fn create_boot_time_map(
         &self,
-        initial_seed: Seed,
+        initial_seed: InitialSeed,
         blank_frame: u16,
     ) -> Option<HashMap<u16, Vec<((u8, u8), (u8, u8, u8, u8))>>> {
         let mut boot_time_map: HashMap<u16, Vec<((u8, u8), (u8, u8, u8, u8))>> = HashMap::new();

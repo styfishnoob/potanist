@@ -1,4 +1,4 @@
-use crate::types::types::*;
+use crate::types::seed::*;
 
 pub struct RngLC {
     multiplier: u32,

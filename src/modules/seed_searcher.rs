@@ -1,14 +1,12 @@
 use itertools::iproduct;
 use serde::Deserialize;
-use std::ops::RangeInclusive;
 
 use super::rand_analyzer::RandAnalyzer;
 use super::rng_lc::RngLC;
 use super::rng_mt::RngMT;
 use super::seed_analyzer::SeedAnalyzer;
 use crate::types::iv::*;
-use crate::types::status::Status;
-use crate::types::types::*;
+use crate::types::seed::*;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SearchParams {
@@ -42,8 +40,8 @@ impl SeedSearcher {
         これらのパラメータから目的のシードを探索する。
         この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
     */
-    pub fn search_seeds_from_status(&self, params: SearchParams) -> Vec<Seed> {
-        let mut result: Vec<Seed> = Vec::new();
+    pub fn search_seeds_from_status(&self, params: SearchParams) -> Vec<IV1stSeed> {
+        let mut result: Vec<IV1stSeed> = Vec::new();
 
         let iv_range_group_1 = [
             params.iv_ranges.hp.clone(),
@@ -157,8 +155,8 @@ impl SeedSearcher {
         params: SearchParams,
         parent_ivs_0: IVs,
         parent_ivs_1: IVs,
-    ) -> Vec<Seed> {
-        let mut result: Vec<Seed> = Vec::new();
+    ) -> Vec<IV1stSeed> {
+        let mut result: Vec<IV1stSeed> = Vec::new();
 
         let iv_range_group_1 = [
             params.iv_ranges.hp.clone(),
@@ -321,10 +319,10 @@ impl SeedSearcher {
     */
     pub fn search_initial_seed(
         &self,
-        iv_1st_seed: Seed,
+        iv_1st_seed: IV1stSeed,
         max_advances: u16,
         max_frame_sum: u16,
-    ) -> Option<(Seed, u16, u16)> {
+    ) -> Option<(InitialSeed, u16, u16)> {
         let mut initial_seed = self.rng_lc.prev(iv_1st_seed); // 一つ目のpidシードが有効かもしれないので、一回だけprevして一つ目が有効かどうか確認する
         let mut advances: u16 = 0; // 消費数
 
@@ -359,7 +357,7 @@ impl SeedSearcher {
     }
 }
 
-fn is_shiny(tid: Rand, sid: Rand, pid: Pid) -> bool {
+fn is_shiny(tid: Rand, sid: Rand, pid: PID) -> bool {
     let tsid_xor = (tid ^ sid) as u32;
     let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
     (tsid_xor ^ pid_xor) <= 7

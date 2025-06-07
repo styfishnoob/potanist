@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{constants::roaming_routes, types::types::Seed};
+use crate::{constants::roaming_routes, types::seed::*};
 
 use super::{rand_analyzer::RandAnalyzer, rng_lc::RngLC, rng_mt::RngMT};
 
@@ -25,7 +25,7 @@ impl SeedChecker {
     */
     pub fn create_call_response_sequence_map(
         &self,
-        initial_seed: Seed,
+        initial_seed: InitialSeed,
         roaming_num: u8,
         search_range: u8,
     ) -> HashMap<Seed, Vec<u8>> {
@@ -72,7 +72,7 @@ impl SeedChecker {
     */
     pub fn create_roamers_location_map(
         &self,
-        initial_seed: Seed,
+        initial_seed: InitialSeed,
         roaming: [bool; 3],
         search_range: u8,
     ) -> HashMap<Seed, (Vec<u8>, [bool; 3])> {
@@ -126,7 +126,7 @@ impl SeedChecker {
     */
     pub fn create_coin_flip_result_map(
         &self,
-        initial_seed: Seed,
+        initial_seed: InitialSeed,
         search_range: u8,
     ) -> HashMap<Seed, Vec<bool>> {
         let mut coin_flip_result_map: HashMap<Seed, Vec<bool>> = HashMap::new();
