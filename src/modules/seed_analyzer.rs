@@ -138,7 +138,8 @@ fn extract_hidden_power_type(ivs: &IVs) -> i16 {
     let speed = if ivs.speed % 2 == 0 { 0 } else { 8 };
     let sp_attack = if ivs.sp_attack % 2 == 0 { 0 } else { 16 };
     let sp_defense = if ivs.sp_defense % 2 == 0 { 0 } else { 32 };
-    return (hp + attack + defense + speed + sp_attack + sp_defense) * 15 % 63;
+    let sum = hp + attack + defense + speed + sp_attack + sp_defense;
+    return (sum * 15 % 63) as i16;
 }
 
 fn extract_hidden_power_power(ivs: &IVs) -> u8 {
@@ -148,5 +149,6 @@ fn extract_hidden_power_power(ivs: &IVs) -> u8 {
     let speed = if ivs.speed % 2 == 0 { 0 } else { 8 };
     let sp_attack = if ivs.sp_attack % 2 == 0 { 0 } else { 16 };
     let sp_defense = if ivs.sp_defense % 2 == 0 { 0 } else { 32 };
-    return (hp + attack + defense + speed + sp_attack + sp_defense) * 40 / 63 + 30;
+    let sum: u16 = hp + attack + defense + speed + sp_attack + sp_defense;
+    return (sum * 40 / 63 + 30) as u8;
 }
