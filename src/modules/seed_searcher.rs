@@ -20,6 +20,21 @@ pub struct SearchParams {
     pub max_frame_sum: u16, // 最低値は600で固定
 }
 
+pub struct ReturnParams {
+    pub initial_seed: InitialSeed,
+    pub ivs: IVs,
+    pub pid: PID,
+    pub nature: u8,
+    pub gender: u8,
+    pub ability: u8,
+    pub hidden_power_type: u8,
+    pub hidden_power_power: u8,
+    pub advances: u16,
+    pub time_sum: u16,
+    pub hour: u16,
+    pub frame_sum: u16,
+}
+
 pub struct SeedSearcher {
     rng_analyzer: RandAnalyzer,
     rng_lc: RngLC,
@@ -40,8 +55,8 @@ impl SeedSearcher {
         これらのパラメータから目的のシードを探索する。
         この処理で求められるシードは個体値の一つ目のシードであり、初期シードではないので注意。
     */
-    pub fn search_seeds_from_status(&self, params: SearchParams) -> Vec<IV1stSeed> {
-        let mut result: Vec<IV1stSeed> = Vec::new();
+    pub fn search_seeds_from_status(&self, params: SearchParams) -> Vec<ReturnParams> {
+        let mut result: Vec<ReturnParams> = Vec::new();
 
         let iv_range_group_1 = [
             params.iv_ranges.hp.clone(),
@@ -80,17 +95,23 @@ impl SeedSearcher {
             let iv_rand_high_group = [iv_rand_high_msb_0, iv_rand_high_msb_1];
 
             for (iv_rand_high, iv_rand_low) in iproduct!(iv_rand_high_group, 0..=0xffff) {
+                let mut ivs: [u8; 6] = [0; 6];
+
                 let (iv_1st_seed, iv_2nd_iv_group) = if forward {
                     let iv_1st_seed = self.rng_analyzer.rands_to_seed(iv_rand_high, iv_rand_low);
                     let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
                     let iv_2nd_rand = self.rng_analyzer.extract_rand(iv_2nd_seed);
                     let iv_2nd_iv_group = self.rng_analyzer.rand_to_iv_group(iv_2nd_rand);
+                    ivs[0..3].copy_from_slice(&iv_group);
+                    ivs[3..6].copy_from_slice(&iv_2nd_iv_group);
                     (iv_1st_seed, iv_2nd_iv_group)
                 } else {
                     let iv_2nd_seed = self.rng_analyzer.rands_to_seed(iv_rand_high, iv_rand_low);
                     let iv_1st_seed = self.rng_lc.prev(iv_2nd_seed);
                     let iv_1st_rand = self.rng_analyzer.extract_rand(iv_1st_seed);
                     let iv_2nd_iv_group = self.rng_analyzer.rand_to_iv_group(iv_1st_rand);
+                    ivs[0..3].copy_from_slice(&iv_2nd_iv_group);
+                    ivs[3..6].copy_from_slice(&iv_group);
                     (iv_1st_seed, iv_2nd_iv_group)
                 };
 
@@ -99,13 +120,45 @@ impl SeedSearcher {
                     .zip(iv_2nd_iv_group.iter())
                     .all(|(range, value)| range.contains(value));
 
-                let status = self.seed_analyzer.extract_status(iv_1st_seed);
-                let check_nature = params.nature == -1 || params.nature == status.nature;
-                let check_ability = params.ability == -1 || params.ability == status.ability;
-                let check_shiny = !params.shiny || is_shiny(params.tid, params.sid, status.pid);
+                let status = self
+                    .seed_analyzer
+                    .extract_status(iv_1st_seed, params.tid, params.sid);
+                let check_nature = params.nature == -1 || params.nature == status.nature as i16;
+                let check_ability = params.ability == -1 || params.ability == status.ability as i16;
+                let check_shiny = !params.shiny || status.shiny;
 
                 if ivs_contains_range && check_nature && check_ability && check_shiny {
-                    result.push(iv_1st_seed);
+                    let initial_seed_data = self.search_initial_seed(
+                        iv_1st_seed,
+                        params.max_advances,
+                        params.max_frame_sum,
+                    );
+
+                    let ivs = IVs {
+                        hp: ivs[0],
+                        attack: ivs[1],
+                        defense: ivs[2],
+                        speed: ivs[3],
+                        sp_attack: ivs[4],
+                        sp_defense: ivs[5],
+                    };
+
+                    if let Some(init_seed_data) = initial_seed_data {
+                        result.push(ReturnParams {
+                            initial_seed: init_seed_data.0,
+                            ivs: ivs,
+                            pid: status.pid,
+                            nature: status.nature,
+                            gender: status.gender,
+                            ability: status.ability,
+                            hidden_power_type: status.hidden_power_type,
+                            hidden_power_power: status.hidden_power_power,
+                            advances: init_seed_data.1,
+                            time_sum: init_seed_data.2,
+                            hour: init_seed_data.3,
+                            frame_sum: init_seed_data.4,
+                        });
+                    }
                 }
             }
         }
@@ -140,7 +193,11 @@ impl SeedSearcher {
                     let nature_num = (pid % 25) as i16;
                     let gender_num = (pid & 0xff) as i16;
                     let ability_num = (pid & 1) as i16;
-                    let is_shiny = is_shiny(params.tid, params.sid, pid);
+                    let is_shiny = {
+                        let tsid_xor = (params.tid ^ params.sid) as u32;
+                        let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
+                        (tsid_xor ^ pid_xor) <= 7
+                    };
 
                     if nature_num == 3 && ability_num == 0 && 127 <= gender_num && is_shiny {
                         continue 'time_sum_loop; // 外側のループへ
@@ -322,7 +379,7 @@ impl SeedSearcher {
         iv_1st_seed: IV1stSeed,
         max_advances: u16,
         max_frame_sum: u16,
-    ) -> Option<(InitialSeed, u16, u16)> {
+    ) -> Option<(InitialSeed, u16, u16, u16, u16)> {
         let mut initial_seed = self.rng_lc.prev(iv_1st_seed); // 一つ目のpidシードが有効かもしれないので、一回だけprevして一つ目が有効かどうか確認する
         let mut advances: u16 = 0; // 消費数
 
@@ -350,15 +407,9 @@ impl SeedSearcher {
             }
 
             // 最初 iv_1st -> pid_2nd -> pid_1st と二回prevする必要があるものの、一回しかprevしていないため、一回分消費数を減らす。
-            return Some((initial_seed, advances - 1, frame_sum));
+            return Some((initial_seed, advances - 1, time_sum, hour, frame_sum));
         }
 
         return None;
     }
-}
-
-fn is_shiny(tid: Rand, sid: Rand, pid: PID) -> bool {
-    let tsid_xor = (tid ^ sid) as u32;
-    let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
-    (tsid_xor ^ pid_xor) <= 7
 }
