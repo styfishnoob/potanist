@@ -128,8 +128,11 @@ impl SeedSearcher {
                 let check_shiny = !params.shiny || status.shiny;
 
                 if ivs_contains_range && check_nature && check_ability && check_shiny {
+                    let pid_2nd_seed = self.rng_lc.prev(iv_1st_seed);
+                    let pid_1st_seed = self.rng_lc.prev(pid_2nd_seed);
+
                     let initial_seed_data = self.search_initial_seed(
-                        iv_1st_seed,
+                        pid_1st_seed,
                         params.max_advances,
                         params.max_frame_sum,
                     );
@@ -360,54 +363,32 @@ impl SeedSearcher {
         return result;
     }
 
-    /*
-      search_seedで求めたシードから、初期シードを求める。
-      シードが以下の値に一致しない(hourの部分が78で、24を超えているなど)場合、いつ起動しても到達不可能のため、
-      到達可能な初期シードを求める。
-
-      seed: 0x12345678
-      12   -> time_sum      (month * day + minute + second)
-      34   -> hour          (ここが24以上だと、いつ起動してもこのシードにならないのでcontinue)
-      5678 -> frame_sum (frame + (year - 2000)
-
-      ※ ソフト選択からつづきからまで約14秒かかり、その内空白時間が約4秒(DPPt/HGSSによって異なる)のため、つづきからを押すまでに最速でも10秒はかかる。
-        よってframeが600F(10秒)くらいはないと間に合わないことになる。
-
-    */
     pub fn search_initial_seed(
         &self,
-        iv_1st_seed: IV1stSeed,
+        seed: Seed,
         max_advances: u16,
         max_frame_sum: u16,
     ) -> Option<(InitialSeed, u16, u16, u16, u16)> {
-        let mut initial_seed = self.rng_lc.prev(iv_1st_seed); // 一つ目のpidシードが有効かもしれないので、一回だけprevして一つ目が有効かどうか確認する
+        let mut initial_seed = seed;
         let mut advances: u16 = 0; // 消費数
 
         while (0..=max_advances).contains(&advances) {
-            initial_seed = self.rng_lc.prev(initial_seed);
-            advances += 1;
-
             let time_sum = ((initial_seed >> 24) & 0xff) as u16;
             let hour = ((initial_seed >> 16) & 0xff) as u16;
             let frame_sum = (initial_seed & 0xffff) as u16;
 
-            // time_sum の最大値は 12 * 31 + 59 + 59 の 490
-            if time_sum > 490 {
+            let check_time_sum = time_sum > 490; // time_sum の最大値は 12 * 31 + 59 + 59 の 490
+            let check_hour = hour > 23;
+            let check_frame_sum = (600..=max_frame_sum + 99).contains(&frame_sum) == false; // 99 はDSで設定できる最大の年
+
+            if check_time_sum || check_hour || check_frame_sum {
                 continue;
+            } else {
+                initial_seed = self.rng_lc.prev(initial_seed);
+                advances += 1;
             }
 
-            // frame_sum の最低値は600で固定する。
-            if 24 <= hour {
-                continue;
-            }
-
-            // +99 はDSで設定できる最大の年
-            if (600..=max_frame_sum + 99).contains(&frame_sum) == false {
-                continue;
-            }
-
-            // 最初 iv_1st -> pid_2nd -> pid_1st と二回prevする必要があるものの、一回しかprevしていないため、一回分消費数を減らす。
-            return Some((initial_seed, advances - 1, time_sum, hour, frame_sum));
+            return Some((initial_seed, advances, time_sum, hour, frame_sum));
         }
 
         return None;
