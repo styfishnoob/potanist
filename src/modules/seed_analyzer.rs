@@ -20,7 +20,7 @@ impl SeedAnalyzer {
         }
     }
 
-    pub fn extract_status(&self, iv_1st_seed: IV1stSeed) -> Status {
+    pub fn extract_status(&self, iv_1st_seed: IV1stSeed, tid: Rand, sid: Rand) -> Status {
         let pid_2nd_seed = self.rng_lc.prev(iv_1st_seed);
         let pid_1st_seed = self.rng_lc.prev(pid_2nd_seed);
         let iv_2nd_seed = self.rng_lc.next(iv_1st_seed);
@@ -33,9 +33,10 @@ impl SeedAnalyzer {
 
         let ivs_1st = self.rng_analyzer.rand_to_iv_group(iv_1st_rand);
         let ivs_2nd = self.rng_analyzer.rand_to_iv_group(iv_2nd_rand);
-        let nature_num = (pid % 100 % 25) as i16;
-        let gender_num = (pid & 0xff) as i16;
-        let ability_num = (pid & 1) as i16;
+        let nature_num = (pid % 100 % 25) as u8;
+        let gender_num = (pid & 0xff) as u8;
+        let ability_num = (pid & 1) as u8;
+        let is_shiny = is_shiny(pid, tid, sid);
 
         let ivs = IVs {
             hp: ivs_1st[0],
@@ -54,6 +55,7 @@ impl SeedAnalyzer {
             gender: gender_num,
             nature: nature_num,
             ability: ability_num,
+            shiny: is_shiny,
             hidden_power_type: hidden_power_type,
             hidden_power_power: hidden_power_power,
             pid: pid,
@@ -131,7 +133,13 @@ impl SeedAnalyzer {
     }
 }
 
-fn extract_hidden_power_type(ivs: &IVs) -> i16 {
+fn is_shiny(pid: PID, tid: Rand, sid: Rand) -> bool {
+    let tsid_xor = (tid ^ sid) as u32;
+    let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
+    (tsid_xor ^ pid_xor) <= 7
+}
+
+fn extract_hidden_power_type(ivs: &IVs) -> u8 {
     let hp = if ivs.hp % 2 == 0 { 0 } else { 1 };
     let attack = if ivs.attack % 2 == 0 { 0 } else { 2 };
     let defense = if ivs.defense % 2 == 0 { 0 } else { 4 };
@@ -139,7 +147,7 @@ fn extract_hidden_power_type(ivs: &IVs) -> i16 {
     let sp_attack = if ivs.sp_attack % 2 == 0 { 0 } else { 16 };
     let sp_defense = if ivs.sp_defense % 2 == 0 { 0 } else { 32 };
     let sum = hp + attack + defense + speed + sp_attack + sp_defense;
-    return (sum * 15 % 63) as i16;
+    return (sum * 15 % 63) as u8;
 }
 
 fn extract_hidden_power_power(ivs: &IVs) -> u8 {
