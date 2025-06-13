@@ -177,21 +177,18 @@ impl SeedSearcher {
         なので、0 から 255 まで回すだけでよく、time_sumを表示する際は、0x00 と 0x00 の左端に 1 を足し、256(0x100) を表示させればいい。
         ただし、time_sum の最大値は 12 * 31 + 59 + 59 の 490(0x1ea) で、それに対応する 234(0xea) 以降は実現不可能な値になるため注意。
     */
-    pub fn search_seeds_from_egg_pid(&self, params: SearchParams) {
+    pub fn search_seeds_from_egg_pid(&self, params: SearchParams) -> Vec<(Seed, PID)> {
+        let mut result: Vec<(Seed, PID)> = Vec::new();
+
         'time_sum_loop: for time_sum in 0..=0xff {
-            for (hour, frame_sum) in iproduct!(0..=23, 600..=params.max_frame_sum) {
+            for (hour, frame_sum) in iproduct!(0..=23, 500..=params.max_frame_sum) {
                 let initial_seed =
                     (time_sum as Seed) << 24 | (hour as Seed) << 12 | frame_sum as Seed;
                 let mut rng_mt = RngMT::new(initial_seed);
 
-                for advances in 0..=params.max_advances {
+                for advances in 0..=10 {
                     let next_seed = rng_mt.next();
-                    let pid = {
-                        let k0 = (next_seed / 0x800) ^ next_seed;
-                        let k1 = (k0.wrapping_mul(0x80) & 0x9d2c5680) ^ k0;
-                        let k2 = (k1.wrapping_mul(0x8000) & 0xefc60000) ^ k1;
-                        (k2 / 0x40000) ^ k2
-                    };
+                    let pid = rng_mt.get_pid(next_seed);
 
                     let nature_num = (pid % 25) as i16;
                     let gender_num = (pid & 0xff) as i16;
@@ -202,12 +199,19 @@ impl SeedSearcher {
                         (tsid_xor ^ pid_xor) <= 7
                     };
 
-                    if nature_num == 3 && ability_num == 0 && 127 <= gender_num && is_shiny {
-                        continue 'time_sum_loop; // 外側のループへ
+                    let check_nature = params.nature == -1 || params.nature == nature_num;
+                    let check_ability = params.ability == -1 || params.ability == ability_num;
+                    let check_shiny = params.shiny == false || (params.shiny && is_shiny);
+
+                    if check_nature && check_ability && check_shiny {
+                        result.push((initial_seed, pid));
+                        continue 'time_sum_loop;
                     }
                 }
             }
         }
+
+        return result;
     }
 
     pub fn search_seeds_from_egg_iv(
