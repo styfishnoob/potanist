@@ -9,7 +9,5 @@ pub struct Status {
     pub nature: u8,
     pub ability: u8,
     pub shiny: bool,
-    pub hidden_power_type: u8,
-    pub hidden_power_power: u8,
     pub pid: PID,
 }
