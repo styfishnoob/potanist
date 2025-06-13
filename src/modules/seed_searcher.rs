@@ -173,8 +173,8 @@ impl SeedSearcher {
         なので、0 から 255 まで回すだけでよく、time_sumを表示する際は、0x00 と 0x00 の左端に 1 を足し、256(0x100) を表示させればいい。
         ただし、time_sum の最大値は 12 * 31 + 59 + 59 の 490(0x1ea) で、それに対応する 234(0xea) 以降は実現不可能な値になるため注意。
     */
-    pub fn search_seeds_from_egg_pid(&self, params: SearchParams) -> Vec<(Seed, PID)> {
-        let mut result: Vec<(Seed, PID)> = Vec::new();
+    pub fn search_seeds_from_egg_pid(&self, params: SearchParams) -> Vec<ReturnParams> {
+        let mut result: Vec<ReturnParams> = Vec::new();
 
         'time_sum_loop: for time_sum in 0..=0xff {
             for (hour, frame_sum) in iproduct!(0..=23, 500..=params.max_frame_sum) {
@@ -200,7 +200,18 @@ impl SeedSearcher {
                     let check_shiny = params.shiny == false || (params.shiny && is_shiny);
 
                     if check_nature && check_ability && check_shiny {
-                        result.push((initial_seed, pid));
+                        result.push(ReturnParams {
+                            initial_seed: None,
+                            ivs: None,
+                            pid: Some(pid),
+                            nature: Some(nature_num as u8),
+                            gender: Some(gender_num as u8),
+                            ability: Some(ability_num as u8),
+                            advances: Some(advances),
+                            time_sum: Some(time_sum),
+                            hour: Some(hour),
+                            frame_sum: Some(frame_sum),
+                        });
                         continue 'time_sum_loop;
                     }
                 }
@@ -215,8 +226,8 @@ impl SeedSearcher {
         params: SearchParams,
         parent_ivs_0: IVs,
         parent_ivs_1: IVs,
-    ) -> Vec<IV1stSeed> {
-        let mut result: Vec<IV1stSeed> = Vec::new();
+    ) -> Vec<ReturnParams> {
+        let mut result: Vec<ReturnParams> = Vec::new();
 
         let iv_range_group_1 = [
             params.iv_ranges.hp.clone(),
@@ -280,11 +291,6 @@ impl SeedSearcher {
                     .iter()
                     .zip(iv_2nd_iv_group.iter())
                     .all(|(range, value)| range.contains(value));
-
-                if iv_2nd_iv_group_contains_range {
-                    result.push(iv_1st_seed);
-                    continue;
-                }
 
                 let parent_ivs_0: [IV; 6] = [
                     parent_ivs_0.hp,
@@ -354,8 +360,36 @@ impl SeedSearcher {
                 .zip(ivs.iter())
                 .all(|(range, value)| range.contains(value));
 
-                if all_ivs_contains_range {
-                    result.push(iv_1st_seed);
+                if iv_2nd_iv_group_contains_range || all_ivs_contains_range {
+                    let ivs = IVs {
+                        hp: ivs[0],
+                        attack: ivs[1],
+                        defense: ivs[2],
+                        speed: ivs[3],
+                        sp_attack: ivs[4],
+                        sp_defense: ivs[5],
+                    };
+
+                    let initial_seed_data = self.search_initial_seed(
+                        iv_1st_seed,
+                        params.max_advances,
+                        params.max_frame_sum,
+                    );
+
+                    if let Some(init_seed_data) = initial_seed_data {
+                        result.push(ReturnParams {
+                            initial_seed: Some(init_seed_data.0),
+                            ivs: Some(ivs),
+                            pid: None,
+                            nature: None,
+                            gender: None,
+                            ability: None,
+                            advances: Some(init_seed_data.1),
+                            time_sum: Some(init_seed_data.2),
+                            hour: Some(init_seed_data.3),
+                            frame_sum: Some(init_seed_data.4),
+                        });
+                    }
                 }
             }
         }
@@ -363,6 +397,9 @@ impl SeedSearcher {
         return result;
     }
 
+    /**
+     * Option<(InitialSeed, u16, u16, u16, u16)> -> Option(initial_seed, advances, time_sum, hour, frame_sum)
+     */
     pub fn search_initial_seed(
         &self,
         seed: Seed,
