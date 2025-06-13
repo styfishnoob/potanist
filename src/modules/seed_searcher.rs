@@ -21,16 +21,16 @@ pub struct SearchParams {
 }
 
 pub struct ReturnParams {
-    pub initial_seed: InitialSeed,
-    pub ivs: IVs,
-    pub pid: PID,
-    pub nature: u8,
-    pub gender: u8,
-    pub ability: u8,
-    pub advances: u16,
-    pub time_sum: u16,
-    pub hour: u16,
-    pub frame_sum: u16,
+    pub initial_seed: Option<InitialSeed>,
+    pub ivs: Option<IVs>,
+    pub pid: Option<PID>,
+    pub nature: Option<u8>,
+    pub gender: Option<u8>,
+    pub ability: Option<u8>,
+    pub advances: Option<u16>,
+    pub time_sum: Option<u16>,
+    pub hour: Option<u16>,
+    pub frame_sum: Option<u16>,
 }
 
 pub struct SeedSearcher {
@@ -146,16 +146,16 @@ impl SeedSearcher {
 
                     if let Some(init_seed_data) = initial_seed_data {
                         result.push(ReturnParams {
-                            initial_seed: init_seed_data.0,
-                            ivs: ivs,
-                            pid: status.pid,
-                            nature: status.nature,
-                            gender: status.gender,
-                            ability: status.ability,
-                            advances: init_seed_data.1,
-                            time_sum: init_seed_data.2,
-                            hour: init_seed_data.3,
-                            frame_sum: init_seed_data.4,
+                            initial_seed: Some(init_seed_data.0),
+                            ivs: Some(ivs),
+                            pid: Some(status.pid),
+                            nature: Some(status.nature),
+                            gender: Some(status.gender),
+                            ability: Some(status.ability),
+                            advances: Some(init_seed_data.1),
+                            time_sum: Some(init_seed_data.2),
+                            hour: Some(init_seed_data.3),
+                            frame_sum: Some(init_seed_data.4),
                         });
                     }
                 }
