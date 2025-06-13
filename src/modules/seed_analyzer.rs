@@ -47,17 +47,12 @@ impl SeedAnalyzer {
             sp_defense: ivs_2nd[2],
         };
 
-        let hidden_power_type = extract_hidden_power_type(&ivs);
-        let hidden_power_power = extract_hidden_power_power(&ivs);
-
         return Status {
             ivs: ivs,
             gender: gender_num,
             nature: nature_num,
             ability: ability_num,
             shiny: is_shiny,
-            hidden_power_type: hidden_power_type,
-            hidden_power_power: hidden_power_power,
             pid: pid,
         };
     }
@@ -137,26 +132,4 @@ fn is_shiny(pid: PID, tid: Rand, sid: Rand) -> bool {
     let tsid_xor = (tid ^ sid) as u32;
     let pid_xor = ((pid >> 16) ^ (pid & 0xffff)) as u32;
     (tsid_xor ^ pid_xor) <= 7
-}
-
-fn extract_hidden_power_type(ivs: &IVs) -> u8 {
-    let hp = if ivs.hp % 2 == 0 { 0 } else { 1 };
-    let attack = if ivs.attack % 2 == 0 { 0 } else { 2 };
-    let defense = if ivs.defense % 2 == 0 { 0 } else { 4 };
-    let speed = if ivs.speed % 2 == 0 { 0 } else { 8 };
-    let sp_attack = if ivs.sp_attack % 2 == 0 { 0 } else { 16 };
-    let sp_defense = if ivs.sp_defense % 2 == 0 { 0 } else { 32 };
-    let sum = hp + attack + defense + speed + sp_attack + sp_defense;
-    return (sum * 15 % 63) as u8;
-}
-
-fn extract_hidden_power_power(ivs: &IVs) -> u8 {
-    let hp = if ivs.hp % 2 == 0 { 0 } else { 1 };
-    let attack = if ivs.attack % 2 == 0 { 0 } else { 2 };
-    let defense = if ivs.defense % 2 == 0 { 0 } else { 4 };
-    let speed = if ivs.speed % 2 == 0 { 0 } else { 8 };
-    let sp_attack = if ivs.sp_attack % 2 == 0 { 0 } else { 16 };
-    let sp_defense = if ivs.sp_defense % 2 == 0 { 0 } else { 32 };
-    let sum: u16 = hp + attack + defense + speed + sp_attack + sp_defense;
-    return (sum * 40 / 63 + 30) as u8;
 }
